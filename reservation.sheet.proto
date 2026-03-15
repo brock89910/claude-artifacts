@@ -1,0 +1,39 @@
+Here’s your full briefing prompt — copy everything between the lines:
+
+I want to build a restaurant reservation tracker as a single HTML file using Firebase Realtime Database for real-time sync across multiple devices (a tablet at the restaurant, a manager’s phone, and an owner’s phone).
+Restaurant setup:
+	∙	4 hibachi grills
+	∙	1 chef = 1 grill max at a time
+	∙	Max 12 guests per hibachi grill
+	∙	Flag a grill as “nearly full” at 10/12 guests
+Chef schedule by day (baked into the app, no manual toggle needed):
+	∙	Monday: 1 chef 12pm–8pm, 2nd chef joins 4pm–8pm
+	∙	Tuesday: 1 chef 12pm–8pm, 2nd chef joins 5pm–8pm
+	∙	Wednesday: 1 chef 12pm–8pm, 2nd chef joins 5pm–8pm
+	∙	Thursday: 2 chefs 12pm–8pm
+	∙	Friday: 2 chefs 12pm–9pm, 3rd chef joins 4pm–9pm
+	∙	Saturday: 2 chefs 12pm–9pm, 3rd chef joins 4pm–9pm
+	∙	Sunday: 2 chefs 12pm–8pm
+Timing/blocking rules:
+	∙	Each chef needs 1 hour to finish cooking after seating → hard-block that chef’s grill for 1hr after a booking is made
+	∙	Each grill has a 1.5–2hr seating window → hard-block rebooking that grill for 1.5hrs after seating, show a warning at 2hrs
+	∙	Time slots are in 30-minute increments across the full service window per day
+Hibachi reservation fields: Name, Group size, Phone number, Card number + expiry (no CVV), Staff initials, Date booking was taken, Notes
+Dining room (separate tab): Group size, Name, Phone number, Notes only — no card required, no grill assignment
+Booking rules:
+	∙	Card on file required before confirming any hibachi reservation
+	∙	Cannot exceed available grills based on chef count at that time
+	∙	Cannot double-book a grill that is hard-blocked
+Design direction:
+	∙	Single HTML file, Firebase Realtime Database for sync
+	∙	Dark industrial/utilitarian aesthetic
+	∙	IBM Plex Mono + IBM Plex Sans fonts
+	∙	Gold accent color #d4a853
+	∙	Optimized for phone and tablet (touch-friendly, mobile-first)
+	∙	Two tabs: 🔥 Hibachi and 🍽 Dining
+	∙	Date navigation (prev/next day)
+	∙	Real-time live indicator
+	∙	Grill status chips showing which grills are active
+Please build the complete single HTML file with all Firebase logic included and a clearly marked section at the top where I paste my Firebase config.
+
+That covers everything we discussed. Paste that into a fresh Claude conversation on PC and it’ll have the full context to build the complete version.​​​​​​​​​​​​​​​​
