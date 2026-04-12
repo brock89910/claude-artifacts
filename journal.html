@@ -989,10 +989,67 @@ var CAT_ICONS={fitness:"💪",learning:"📖",finances:"💰",growth:"🌱"};
 
 var clDate=today();
 
+// ---- hourly block definitions ----
+// Each block: {time, label, icon, color, items:[{id,label,days?}]}
+// days: array of DOW strings this item appears on, or omit for every day
+function getDayBlocks(dowKey){
+  var hasFitDeadline=["Mon","Tue","Thu","Fri"].indexOf(dowKey)!==-1;
+  var isThurFri=["Thu","Fri"].indexOf(dowKey)!==-1;
+  var isMon=dowKey==="Mon";
+  var blocks=[
+    {
+      time:"8:00 AM", label:"Morning Start", icon:"🌅", color:"var(--orange)",
+      items:[
+        {id:"m_wake",    label:"Woke up at 8 AM"},
+        {id:"m_weigh",   label:"Weighed myself"},
+        {id:"m_eat",     label:"Ate at home"}
+      ]
+    },
+    {
+      time:"9:00 AM", label:"Morning Operations", icon:"📋", color:"var(--blue)",
+      items:[
+        {id:"o_email",   label:"Check & sort emails"},
+        {id:"o_resv",    label:"Review reservations"},
+        {id:"o_inv",     label:"Check inventory"},
+        {id:"o_tasks",   label:"Review tasks for today"},
+        {id:"o_news",    label:"Watch finance news"}
+      ].concat(hasFitDeadline?[{id:"o_fit10",label:"Fitness done by 10 AM ⏰"}]:[])
+    },
+    {
+      time:"2:00 PM", label:"Outside Work Done", icon:"🏁", color:"var(--teal)",
+      items:[
+        {id:"p_outside", label:"Done with outside work"}
+      ]
+    },
+    {
+      time:"4:00 PM", label:"Afternoon Block", icon:"📚", color:"var(--purple)",
+      items:[
+        {id:"p_read",    label:"Finished reading (50+ pages)"},
+        {id:"p_bills",   label:"Bills & available tasks cleared"}
+      ].concat(isMon?[{id:"p_tips",label:"Tips & payroll done 💰"}]:[])
+       .concat([{id:"p_dev",label:"Extra development / self-work done"}])
+    }
+  ];
+  if(isThurFri){
+    blocks.push({
+      time:"6:00 PM", label:"Scheduling", icon:"🗓", color:"var(--gold)",
+      items:[{id:"e_sched",label:"Scheduling completed for the week"}]
+    });
+  }
+  blocks.push({
+    time:"10:00 PM", label:"Night Reflection", icon:"🌙", color:"var(--text2)",
+    items:[
+      {id:"n_reflect",  label:"Reflected on the day"},
+      {id:"n_tomorrow", label:"Projection set for tomorrow"}
+    ]
+  });
+  return blocks;
+}
+
 function renderChecklist(){
-  // Week strip (Mon–Sun of current week containing clDate)
+  // Week strip
   var d=new Date(clDate+"T12:00:00");
-  var dow=d.getDay(); // 0=Sun
+  var dow=d.getDay();
   var mondayOffset=dow===0?-6:1-dow;
   var weekDays=[];
   for(var i=0;i<7;i++){
@@ -1000,7 +1057,7 @@ function renderChecklist(){
     dd.setDate(d.getDate()+mondayOffset+i);
     weekDays.push(dd.toISOString().split("T")[0]);
   }
-  var stripHtml='<div class="cal-strip" style="padding:8px 16px 12px">';
+  var stripHtml='<div class="cal-strip" style="padding:8px 16px 10px">';
   var dowNames=["Mon","Tue","Wed","Thu","Fri","Sat","Sun"];
   weekDays.forEach(function(ds,idx){
     var dt=new Date(ds+"T12:00:00");
@@ -1015,18 +1072,46 @@ function renderChecklist(){
     el.addEventListener("click",function(){clDate=el.dataset.d;renderChecklist();});
   });
 
-  // Check-in banner
-  var checkin=getCheckinType(clDate);
+  var dowKey=getDOW(clDate);
+  var sched=WEEKLY_SCHEDULE[dowKey]||{fitness:{label:"Rest",time:""},items:[]};
+  var blocks=getDayBlocks(dowKey);
+  var checked=G("cl_"+clDate)||{};
+  var proj=G("proj_"+clDate)||{set:false,text:""};
+
+  // Count all items across blocks for progress
+  var totalItems=0,doneItems=0;
+  blocks.forEach(function(b){b.items.forEach(function(it){totalItems++;if(checked[it.id])doneItems++;});});
+  var pct=totalItems?Math.round(doneItems/totalItems*100):0;
+
   var bannerHtml='';
+
+  // ---- DAILY PROJECTION PROMPT ----
+  if(!proj.set){
+    bannerHtml+='<div id="proj-banner" style="margin:8px 12px 10px;background:linear-gradient(135deg,#1a0f00,#0d1a2a);border:1px solid var(--gold-dim);border-radius:14px;padding:14px 16px">'
+      +'<div style="font-family:\'Bebas Neue\',sans-serif;font-size:15px;letter-spacing:2px;color:var(--gold);margin-bottom:4px">🎯 SET YOUR PROJECTION</div>'
+      +'<div style="font-size:12px;color:var(--text3);margin-bottom:10px">What are you going to accomplish today?</div>'
+      +'<textarea id="proj-input" placeholder="e.g. Nail my swim, close 2 leads, finish chapter 3…" style="width:100%;background:var(--bg4);border:1px solid var(--border2);border-radius:8px;color:var(--text);font-family:\'DM Sans\',sans-serif;font-size:13px;padding:10px 12px;outline:none;resize:none;height:66px;display:block;margin-bottom:8px"></textarea>'
+      +'<button id="proj-set-btn" style="width:100%;background:var(--gold);border:none;border-radius:10px;color:#000;font-family:\'Bebas Neue\',sans-serif;font-size:15px;letter-spacing:2px;padding:11px;cursor:pointer">LOCK IN ✓</button>'
+      +'</div>';
+  } else {
+    bannerHtml+='<div style="margin:8px 12px 10px;background:var(--bg3);border:1px solid var(--gold-dim);border-radius:12px;padding:10px 14px;display:flex;justify-content:space-between;align-items:flex-start;gap:10px">'
+      +'<div><div style="font-size:9px;font-weight:700;letter-spacing:2px;color:var(--gold-dim);text-transform:uppercase;margin-bottom:4px">🎯 Today\'s Projection</div>'
+      +'<div style="font-size:13px;color:var(--text2);line-height:1.5">'+esc(proj.text||"(no text)")+'</div></div>'
+      +'<button id="proj-edit-btn" style="background:none;border:none;color:var(--text3);font-size:11px;font-weight:700;cursor:pointer;flex-shrink:0;padding-top:2px">EDIT</button>'
+      +'</div>';
+  }
+
+  // ---- 3-DAY CHECK-IN ----
+  var checkin=getCheckinType(clDate);
   if(checkin){
     var questions={
-      fitness:["Are you on track with your weight goal?","Are you getting stronger?","Energy levels staying high?"],
-      learning:["Have you read ¼ of your current book yet?","Are you retaining what you're reading?","Learning translating to real life?"]
+      fitness:["On track with weight goal?","Getting stronger?","Energy levels staying high?"],
+      learning:["Read ¼ of your current book?","Retaining what you read?","Learning translating to real life?"]
     };
     var qs=questions[checkin];
     var stored=G("checkin_"+clDate)||{};
-    bannerHtml='<div style="margin:0 12px 10px;background:var(--bg3);border:1px solid '+(checkin==="fitness"?"var(--blue)":"var(--purple)")+';border-radius:14px;padding:14px 16px">'
-      +'<div style="font-family:\'Bebas Neue\',sans-serif;font-size:14px;letter-spacing:2px;color:'+(checkin==="fitness"?"var(--blue)":"var(--purple)")+';margin-bottom:10px">'
+    bannerHtml+='<div style="margin:0 12px 10px;background:var(--bg3);border:1px solid '+(checkin==="fitness"?"var(--blue)":"var(--purple)")+';border-radius:14px;padding:14px 16px">'
+      +'<div style="font-family:\'Bebas Neue\',sans-serif;font-size:13px;letter-spacing:2px;color:'+(checkin==="fitness"?"var(--blue)":"var(--purple)")+';margin-bottom:10px">'
       +(checkin==="fitness"?"💪 FITNESS CHECK-IN":"📖 LEARNING CHECK-IN")+'</div>';
     qs.forEach(function(q,qi){
       var ans=stored[qi]||null;
@@ -1042,64 +1127,74 @@ function renderChecklist(){
     });
     bannerHtml+='</div>';
   }
+
   document.getElementById("cl-checkin-banner").innerHTML=bannerHtml;
+
+  // Projection events
+  var projSetBtn=document.getElementById("proj-set-btn");
+  if(projSetBtn){
+    projSetBtn.addEventListener("click",function(){
+      var txt=(document.getElementById("proj-input")||{}).value||"";
+      S("proj_"+clDate,{set:true,text:txt.trim()});
+      renderChecklist();toast("Locked in 🔒");
+    });
+  }
+  var projEditBtn=document.getElementById("proj-edit-btn");
+  if(projEditBtn){
+    projEditBtn.addEventListener("click",function(){
+      S("proj_"+clDate,{set:false,text:""});
+      renderChecklist();
+    });
+  }
+
   document.querySelectorAll(".cl-checkin-btn").forEach(function(btn){
     btn.addEventListener("click",function(){
       var stored=G("checkin_"+btn.dataset.d)||{};
       stored[btn.dataset.qi]=btn.dataset.opt;
       S("checkin_"+btn.dataset.d,stored);
-      renderChecklist();
-      toast("Noted ✓");
+      renderChecklist();toast("Noted ✓");
     });
   });
 
-  // Main sections
-  var dowKey=getDOW(clDate);
-  var sched=WEEKLY_SCHEDULE[dowKey]||{fitness:{label:"Rest",time:""},items:[]};
-  var checked=G("cl_"+clDate)||{};
-
-  // Progress
-  var total=sched.items.length,done=Object.keys(checked).filter(function(k){return checked[k];}).length;
-  done=Math.min(done,total);
-  var pct=total?Math.round(done/total*100):0;
-
+  // ---- MAIN CONTENT ----
   var html='';
 
-  // Day header
-  html+='<div style="margin:0 12px 10px;background:var(--bg3);border:1px solid var(--border);border-radius:14px;padding:14px 16px">'
+  // Day header + progress
+  html+='<div style="margin:0 12px 10px;background:var(--bg3);border:1px solid var(--border);border-radius:14px;padding:13px 16px">'
     +'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">'
+    +'<div>'
     +'<div style="font-family:\'Bebas Neue\',sans-serif;font-size:20px;color:var(--text);letter-spacing:1px">'+dowKey+' — '+fmtDate(clDate)+'</div>'
-    +'<div style="font-family:\'Bebas Neue\',sans-serif;font-size:22px;color:var(--gold)">'+pct+'%</div>'
+    +'<div style="font-size:10px;color:var(--text3);margin-top:2px">'+sched.fitness.label+(sched.fitness.deadline?' · <span style="color:var(--orange)">⏰ '+sched.fitness.time+'</span>':'')+'</div>'
+    +'</div>'
+    +'<div style="font-family:\'Bebas Neue\',sans-serif;font-size:28px;color:var(--gold)">'+pct+'%</div>'
     +'</div>'
     +'<div style="height:4px;background:var(--border2);border-radius:2px;overflow:hidden">'
     +'<div style="height:100%;background:var(--gold);border-radius:2px;width:'+pct+'%;transition:width 0.4s"></div>'
     +'</div></div>';
 
-  // Fitness card
-  html+='<div style="margin:0 12px 6px;background:var(--bg3);border:1px solid var(--border);border-radius:12px;padding:12px 14px">'
-    +'<div style="display:flex;align-items:center;gap:8px;margin-bottom:2px">'
-    +'<span style="font-size:9px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:var(--blue)">FITNESS</span>'
-    +(sched.fitness.deadline?'<span style="font-size:9px;color:var(--orange);font-family:\'DM Mono\',monospace">⏰ '+sched.fitness.time+'</span>':'')
-    +'</div>'
-    +'<div style="font-size:15px;font-weight:600;color:var(--text)">'+sched.fitness.label+'</div>'
-    +'</div>';
-
-  // Group items by category
-  var cats=["fitness","learning","finances","growth"];
-  var catLabels={fitness:"Fitness",learning:"Learning",finances:"Finances",growth:"Growth"};
-  cats.forEach(function(cat){
-    var catItems=sched.items.filter(function(it){return it.cat===cat;});
-    if(!catItems.length)return;
-    html+='<div class="sec-lbl" style="color:'+CAT_COLORS[cat]+'">'+CAT_ICONS[cat]+' '+catLabels[cat]+'</div>';
-    catItems.forEach(function(item){
+  // Time blocks
+  blocks.forEach(function(block){
+    var blockDone=block.items.every(function(it){return !!checked[it.id];});
+    html+='<div style="margin:0 12px 10px">'
+      // Time label
+      +'<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">'
+      +'<div style="font-family:\'DM Mono\',monospace;font-size:11px;color:'+block.color+';font-weight:700;letter-spacing:0.5px">'+block.icon+' '+block.time+'</div>'
+      +'<div style="flex:1;height:1px;background:var(--border)"></div>'
+      +'<div style="font-family:\'Bebas Neue\',sans-serif;font-size:11px;letter-spacing:2px;color:'+(blockDone?"var(--green)":"var(--text3)")+'">'+block.label+'</div>'
+      +'</div>'
+      // Items
+      +'<div style="background:var(--bg3);border:1px solid '+(blockDone?block.color:"var(--border)")+';border-radius:12px;overflow:hidden;transition:border-color 0.3s">';
+    block.items.forEach(function(item,idx){
       var ck=!!checked[item.id];
-      html+='<div class="cl-item" data-key="'+item.id+'" data-date="'+clDate+'" style="display:flex;align-items:center;gap:12px;margin:0 12px 6px;padding:12px 14px;background:var(--bg3);border:1px solid '+(ck?"var(--border2)":"var(--border)")+';border-radius:12px;opacity:'+(ck?0.6:1)+';cursor:pointer;transition:all 0.15s">'
-        +'<div style="width:22px;height:22px;border-radius:6px;border:2px solid '+(ck?CAT_COLORS[cat]:"var(--border2)")+';background:'+(ck?CAT_COLORS[cat]:"none")+';display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:all 0.15s">'
-        +(ck?'<span style="color:#000;font-size:11px;font-weight:800">✓</span>':'')
+      var isLast=idx===block.items.length-1;
+      html+='<div class="cl-item" data-key="'+item.id+'" data-date="'+clDate+'" style="display:flex;align-items:center;gap:12px;padding:11px 14px;'+(isLast?'':'border-bottom:1px solid var(--border);')+';cursor:pointer;transition:all 0.15s;'+(ck?'opacity:0.55':'')+'">'
+        +'<div style="width:20px;height:20px;border-radius:5px;border:2px solid '+(ck?block.color:"var(--border2)")+';background:'+(ck?block.color:"none")+';display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:all 0.15s">'
+        +(ck?'<span style="color:#000;font-size:10px;font-weight:900">✓</span>':'')
         +'</div>'
-        +'<div style="font-size:14px;font-weight:500;'+(ck?"text-decoration:line-through;color:var(--text3)":"")+'">'+esc(item.label)+'</div>'
+        +'<div style="font-size:13px;font-weight:500;'+(ck?"text-decoration:line-through;color:var(--text3)":"color:var(--text)")+'">'+esc(item.label)+'</div>'
         +'</div>';
     });
+    html+='</div></div>';
   });
 
   document.getElementById("cl-sections").innerHTML=html;
@@ -1464,64 +1559,146 @@ function addFood(){
 
 // ===================== SPECIFICS =====================
 var SPEC_CATS = [
-  {id:"fitness",   label:"Fitness",   icon:"💪", color:"var(--blue)"},
-  {id:"learning",  label:"Learning",  icon:"📖", color:"var(--purple)"},
-  {id:"finances",  label:"Finances",  icon:"💰", color:"var(--gold)"},
-  {id:"growth",    label:"Growth",    icon:"🌱", color:"var(--teal)"}
+  {id:"fitness",  label:"Fitness",  icon:"💪", color:"var(--blue)"},
+  {id:"learning", label:"Learning", icon:"📖", color:"var(--purple)"},
+  {id:"finances", label:"Finances", icon:"💰", color:"var(--gold)"},
+  {id:"growth",   label:"Growth",   icon:"🌱", color:"var(--teal)"}
 ];
 
 var activeSpecCat = "fitness";
+// drill-in state: null = list view, string id = concept detail view
+var specDrillId = null;
+// sub-tab for fitness/learning/growth
+var specSubTab = null; // workout-type id, or "all"
 
+// ---- Storage helpers ----
+function getConcepts(cat){ return G("concepts_"+cat)||[]; }
+function saveConcepts(cat,arr){ S("concepts_"+cat,arr); }
+function getLogs(cat,cid){ return G("clog_"+cat+"_"+cid)||[]; }
+function saveLogs(cat,cid,arr){ S("clog_"+cat+"_"+cid,arr); }
+
+// ---- Workout type seeds ----
+var FITNESS_DEFAULT_TYPES = ["Weight Lifting","Cardio","Conditioning","Plyo","Skill Build","Swim","Sprinting"];
+
+function ensureFitnessTypes(){
+  var arr=getConcepts("fitness");
+  if(!arr.length){
+    FITNESS_DEFAULT_TYPES.forEach(function(n,i){
+      arr.push({id:1000+i, name:n, style:"workout", created:today(), icon:"🏋"});
+    });
+    saveConcepts("fitness",arr);
+  }
+  return arr;
+}
+
+// ---- Render dispatcher ----
 function renderSpecifics(){
-  // Tab row
-  var tabHtml='<div style="display:flex;gap:6px;padding:10px 12px 0;overflow-x:auto;scrollbar-width:none">';
+  // Top category tab bar
+  var tabHtml='<div style="display:flex;gap:6px;padding:10px 12px 8px;overflow-x:auto;scrollbar-width:none;border-bottom:1px solid var(--border)">';
   SPEC_CATS.forEach(function(c){
     var on=c.id===activeSpecCat;
-    tabHtml+='<button class="spec-tab-btn" data-cat="'+c.id+'" style="flex-shrink:0;padding:6px 14px;border-radius:20px;border:1px solid '+(on?c.color:"var(--border)")+';background:'+(on?"var(--bg4)":"var(--bg3)")+';color:'+(on?c.color:"var(--text3)")+';font-size:11px;font-weight:700;cursor:pointer;text-transform:uppercase;letter-spacing:0.5px">'+c.icon+' '+c.label+'</button>';
+    tabHtml+='<button class="spec-cat-btn" data-cat="'+c.id+'" style="flex-shrink:0;padding:7px 16px;border-radius:20px;border:1px solid '+(on?c.color:"var(--border)")+';background:'+(on?"var(--bg4)":"var(--bg3)")+';color:'+(on?c.color:"var(--text3)")+';font-size:11px;font-weight:700;cursor:pointer;letter-spacing:0.5px">'+c.icon+' '+c.label+'</button>';
   });
   tabHtml+='</div>';
   document.getElementById("spec-tabs-row").innerHTML=tabHtml;
-  document.querySelectorAll(".spec-tab-btn").forEach(function(btn){
-    btn.addEventListener("click",function(){activeSpecCat=btn.dataset.cat;renderSpecifics();});
+  document.querySelectorAll(".spec-cat-btn").forEach(function(btn){
+    btn.addEventListener("click",function(){
+      activeSpecCat=btn.dataset.cat;
+      specDrillId=null;
+      specSubTab=null;
+      renderSpecifics();
+    });
   });
 
-  var cat=SPEC_CATS.find(function(c){return c.id===activeSpecCat;});
-  var entries=(G("spec_"+activeSpecCat)||[]).slice().reverse();
+  if(specDrillId !== null){
+    renderConceptDetail();
+  } else {
+    if(activeSpecCat==="fitness") renderFitnessConcepts();
+    else if(activeSpecCat==="learning") renderLearningConcepts();
+    else if(activeSpecCat==="finances") renderFinancesConcepts();
+    else if(activeSpecCat==="growth") renderGrowthConcepts();
+  }
+}
 
-  // Compose area
-  var html='<div style="margin:10px 12px 8px">'
-    +'<textarea id="spec-note-input" placeholder="Add a note, comment, or log entry for '+cat.label+'..." style="width:100%;background:var(--bg3);border:1px solid var(--border);border-radius:12px;color:var(--text);font-family:\'DM Sans\',sans-serif;font-size:14px;padding:12px 14px;outline:none;resize:none;min-height:80px;display:block"></textarea>'
-    +'<div style="display:flex;gap:8px;margin-top:6px">'
-    +'<select id="spec-type-sel" style="flex:1;background:var(--bg3);border:1px solid var(--border);border-radius:10px;color:var(--text2);font-size:13px;padding:9px 12px;outline:none">';
-  var types={fitness:["Session Note","PR / Weight Hit","Pain / Injury","Energy Log","Goal Update"],learning:["Book Note","Key Insight","Quote","Page Count","Finish"],finances:["Lead Update","Follow-up","Revenue Note","Expense","Goal"],growth:["Reflection","Ambition Note","Responsibility Check","Mindset","Gratitude"]};
-  (types[activeSpecCat]||["Note"]).forEach(function(t){html+='<option>'+t+'</option>';});
-  html+='</select>'
-    +'<button id="spec-add-btn" style="background:'+cat.color+';border:none;border-radius:10px;color:#000;font-family:\'Bebas Neue\',sans-serif;font-size:15px;letter-spacing:1px;padding:0 18px;cursor:pointer;white-space:nowrap">LOG</button>'
-    +'</div></div>';
+// ============ UTIL ============
+function sI(id){ return document.getElementById(id); }
 
-  // Stats strip
-  var today7=[];var td=today();
-  for(var i=0;i<7;i++){var ds=shiftDate(td,-i);today7.push(ds);}
-  var week7=(G("spec_"+activeSpecCat)||[]).filter(function(e){return today7.indexOf(e.dt)!==-1;}).length;
-  html+='<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:0 12px 10px">'
-    +'<div style="background:var(--bg3);border:1px solid var(--border);border-radius:12px;padding:12px;text-align:center"><div style="font-size:9px;font-weight:700;letter-spacing:2px;color:var(--text3);text-transform:uppercase;margin-bottom:4px">This Week</div><div style="font-family:\'Bebas Neue\',sans-serif;font-size:26px;color:'+cat.color+'">'+week7+'</div></div>'
-    +'<div style="background:var(--bg3);border:1px solid var(--border);border-radius:12px;padding:12px;text-align:center"><div style="font-size:9px;font-weight:700;letter-spacing:2px;color:var(--text3);text-transform:uppercase;margin-bottom:4px">Total</div><div style="font-family:\'Bebas Neue\',sans-serif;font-size:26px;color:'+cat.color+'">'+((G("spec_"+activeSpecCat)||[]).length)+'</div></div>'
+function mkInput(placeholder,id,type){
+  type=type||"text";
+  return '<input type="'+type+'" id="'+id+'" placeholder="'+placeholder+'" style="flex:1;background:var(--bg3);border:1px solid var(--border);border-radius:10px;color:var(--text);font-family:\'DM Sans\',sans-serif;font-size:14px;padding:10px 13px;outline:none;min-width:0">';
+}
+
+function mkPrimaryBtn(label,id,color){
+  color=color||"var(--gold)";
+  return '<button id="'+id+'" style="background:'+color+';border:none;border-radius:10px;color:#000;font-family:\'Bebas Neue\',sans-serif;font-size:15px;letter-spacing:1px;padding:0 18px;height:42px;cursor:pointer;flex-shrink:0;white-space:nowrap">'+label+'</button>';
+}
+
+function backBtn(label){
+  return '<button id="spec-back-btn" style="display:flex;align-items:center;gap:6px;background:none;border:none;color:var(--text3);font-size:13px;font-weight:700;cursor:pointer;padding:10px 12px 4px;letter-spacing:0.5px">← '+label+'</button>';
+}
+
+function ratingBtns(key,stored,labels,colors){
+  var cur=stored[key]||null;
+  var h='<div style="display:flex;gap:5px;flex-wrap:wrap">';
+  labels.forEach(function(lbl,i){
+    var col=colors?colors[i]:"var(--text2)";
+    var on=cur===lbl;
+    h+='<button class="spec-rating-btn" data-key="'+key+'" data-val="'+lbl+'" style="padding:5px 10px;border-radius:8px;border:1px solid '+(on?col:"var(--border2)")+';background:'+(on?"var(--bg4)":"var(--bg3)")+';color:'+(on?col:"var(--text3)")+';font-size:11px;font-weight:700;cursor:pointer">'+lbl+'</button>';
+  });
+  h+='</div>';
+  return h;
+}
+
+function progressBar(pct,color){
+  color=color||"var(--gold)";
+  return '<div style="height:4px;background:var(--border2);border-radius:2px;overflow:hidden"><div style="height:100%;background:'+color+';border-radius:2px;width:'+Math.min(pct,100)+'%;transition:width 0.4s"></div></div>';
+}
+
+// ============ FITNESS CONCEPTS ============
+function renderFitnessConcepts(){
+  var cat=SPEC_CATS[0];
+  var concepts=ensureFitnessTypes();
+  if(!specSubTab) specSubTab="all";
+
+  // Sub-tab bar for workout types
+  var html='<div style="display:flex;gap:5px;padding:8px 12px 6px;overflow-x:auto;scrollbar-width:none">';
+  html+='<button class="spec-sub-btn" data-sub="all" style="flex-shrink:0;padding:5px 12px;border-radius:16px;border:1px solid '+(specSubTab==="all"?cat.color:"var(--border)")+';background:'+(specSubTab==="all"?"var(--bg4)":"var(--bg3)")+';color:'+(specSubTab==="all"?cat.color:"var(--text3)")+';font-size:10px;font-weight:700;cursor:pointer">ALL</button>';
+  concepts.forEach(function(c){
+    var on=specSubTab===String(c.id);
+    html+='<button class="spec-sub-btn" data-sub="'+c.id+'" style="flex-shrink:0;padding:5px 12px;border-radius:16px;border:1px solid '+(on?cat.color:"var(--border)")+';background:'+(on?"var(--bg4)":"var(--bg3)")+';color:'+(on?cat.color:"var(--text3)")+';font-size:10px;font-weight:700;cursor:pointer;white-space:nowrap">'+esc(c.name)+'</button>';
+  });
+  html+='</div>';
+
+  // New workout type input
+  html+='<div style="display:flex;gap:8px;margin:0 12px 10px">'
+    +mkInput("New workout type…","fit-new-type")
+    +mkPrimaryBtn("ADD","fit-add-type",cat.color)
     +'</div>';
 
-  // Entries
-  if(!entries.length){
-    html+='<div class="empty-state">No entries yet — start logging!</div>';
+  // Concept cards
+  var shown=specSubTab==="all"?concepts:concepts.filter(function(c){return String(c.id)===specSubTab;});
+  if(!shown.length){
+    html+='<div class="empty-state">No workouts yet</div>';
   } else {
-    html+='<div class="sec-lbl">Log</div>';
     html+='<div style="margin:0 12px">';
-    entries.forEach(function(e){
-      html+='<div style="background:var(--bg3);border:1px solid var(--border);border-radius:12px;padding:12px 14px;margin-bottom:6px;position:relative">'
-        +'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">'
-        +'<span style="font-size:10px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:'+cat.color+'">'+esc(e.type||"Note")+'</span>'
-        +'<span style="font-size:10px;color:var(--text3);font-family:\'DM Mono\',monospace">'+fmtDate(e.dt)+'</span>'
+    shown.forEach(function(c){
+      var logs=getLogs("fitness",c.id);
+      var last=logs.length?logs[logs.length-1]:null;
+      var lastVal=last?(last.weight?last.weight+'kg × '+last.reps+'r':'—'):'—';
+      var trend='';
+      if(logs.length>=2){
+        var prev=logs[logs.length-2];
+        var curW=parseFloat(last.weight||0),prvW=parseFloat(prev.weight||0);
+        if(curW>prvW) trend='<span style="color:var(--green);font-size:10px">▲ PR</span>';
+        else if(curW<prvW) trend='<span style="color:var(--red);font-size:10px">▼</span>';
+        else trend='<span style="color:var(--text3);font-size:10px">→</span>';
+      }
+      html+='<div class="spec-concept-row" data-cid="'+c.id+'" style="display:flex;align-items:center;gap:12px;background:var(--bg3);border:1px solid var(--border);border-radius:12px;padding:13px 14px;margin-bottom:6px;cursor:pointer">'
+        +'<div style="flex:1;min-width:0">'
+        +'<div style="font-size:15px;font-weight:600;color:var(--text)">'+esc(c.name)+'</div>'
+        +'<div style="font-size:11px;color:var(--text3);font-family:\'DM Mono\',monospace;margin-top:3px">'+logs.length+' sessions · Last: '+lastVal+' '+trend+'</div>'
         +'</div>'
-        +'<div style="font-size:14px;line-height:1.6;color:var(--text2);white-space:pre-wrap">'+esc(e.note)+'</div>'
-        +'<button class="spec-del-btn" data-id="'+e.id+'" style="position:absolute;top:10px;right:10px;background:none;border:none;color:var(--border2);font-size:16px;cursor:pointer">×</button>'
+        +'<span style="font-size:20px;color:var(--text3)">›</span>'
         +'</div>';
     });
     html+='</div>';
@@ -1529,32 +1706,528 @@ function renderSpecifics(){
 
   document.getElementById("spec-content").innerHTML=html;
 
-  // Focus textarea border
-  var ta=document.getElementById("spec-note-input");
-  if(ta){ta.addEventListener("focus",function(){ta.style.borderColor=cat.color;});ta.addEventListener("blur",function(){ta.style.borderColor="var(--border)";});}
+  // Sub tab clicks
+  document.querySelectorAll(".spec-sub-btn").forEach(function(btn){
+    btn.addEventListener("click",function(){specSubTab=btn.dataset.sub;renderFitnessConcepts();});
+  });
+  // Add type
+  var addBtn=sI("fit-add-type");
+  if(addBtn) addBtn.addEventListener("click",function(){
+    var inp=sI("fit-new-type");
+    var name=inp?inp.value.trim():"";
+    if(!name){toast("Enter a name");return;}
+    var arr=getConcepts("fitness");
+    arr.push({id:Date.now(),name:name,style:"workout",created:today(),icon:"🏋"});
+    saveConcepts("fitness",arr);
+    if(inp)inp.value="";
+    renderFitnessConcepts();toast("Added ✓");
+  });
+  // Drill in
+  document.querySelectorAll(".spec-concept-row").forEach(function(row){
+    row.addEventListener("click",function(){specDrillId=row.dataset.cid;renderSpecifics();});
+  });
+}
 
-  document.getElementById("spec-add-btn").addEventListener("click",addSpecEntry);
-  document.querySelectorAll(".spec-del-btn").forEach(function(btn){
+// ============ FITNESS DETAIL ============
+function renderConceptDetail(){
+  var cat=SPEC_CATS.find(function(c){return c.id===activeSpecCat;});
+  if(activeSpecCat==="fitness") renderFitnessDetail(cat);
+  else if(activeSpecCat==="learning") renderLearningDetail(cat);
+  else if(activeSpecCat==="growth") renderGrowthDetail(cat);
+}
+
+function renderFitnessDetail(cat){
+  var concepts=getConcepts("fitness");
+  var concept=concepts.find(function(c){return String(c.id)===String(specDrillId);});
+  if(!concept){specDrillId=null;renderSpecifics();return;}
+  var logs=getLogs("fitness",concept.id).slice().reverse();
+
+  // Stats
+  var allW=logs.filter(function(l){return l.weight;}).map(function(l){return parseFloat(l.weight);});
+  var maxW=allW.length?Math.max.apply(null,allW):0;
+  var sessions=logs.length;
+  var lastLog=logs[0]||null;
+
+  var html=backBtn("Fitness")
+    +'<div style="margin:4px 12px 10px;background:var(--bg3);border:1px solid '+cat.color+';border-radius:14px;padding:14px 16px">'
+    +'<div style="font-family:\'Bebas Neue\',sans-serif;font-size:22px;color:'+cat.color+';letter-spacing:1px;margin-bottom:10px">'+esc(concept.name)+'</div>'
+    +'<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">'
+    +'<div style="text-align:center"><div style="font-size:9px;color:var(--text3);font-weight:700;letter-spacing:1.5px;text-transform:uppercase">Sessions</div><div style="font-family:\'Bebas Neue\',sans-serif;font-size:24px;color:'+cat.color+'">'+sessions+'</div></div>'
+    +'<div style="text-align:center"><div style="font-size:9px;color:var(--text3);font-weight:700;letter-spacing:1.5px;text-transform:uppercase">Max Weight</div><div style="font-family:\'Bebas Neue\',sans-serif;font-size:24px;color:'+cat.color+'">'+(maxW||'—')+(maxW?'<span style="font-size:12px">kg</span>':'')+'</div></div>'
+    +'<div style="text-align:center"><div style="font-size:9px;color:var(--text3);font-weight:700;letter-spacing:1.5px;text-transform:uppercase">Last</div><div style="font-size:11px;color:var(--text2);font-family:\'DM Mono\',monospace;margin-top:4px">'+(lastLog?fmtDate(lastLog.dt):'—')+'</div></div>'
+    +'</div></div>';
+
+  // Log form
+  html+='<div style="margin:0 12px 10px;background:var(--bg3);border:1px solid var(--border);border-radius:12px;padding:12px 14px">'
+    +'<div style="font-size:10px;font-weight:700;letter-spacing:2px;color:var(--text3);text-transform:uppercase;margin-bottom:10px">LOG SESSION</div>'
+    +'<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin-bottom:8px">'
+    +'<div><div style="font-size:9px;color:var(--text3);font-weight:700;margin-bottom:4px">SETS</div><input type="number" id="fd-sets" placeholder="—" style="width:100%;background:var(--bg4);border:1px solid var(--border2);border-radius:8px;color:var(--text);font-family:\'DM Mono\',monospace;font-size:16px;padding:8px;outline:none;text-align:center"></div>'
+    +'<div><div style="font-size:9px;color:var(--text3);font-weight:700;margin-bottom:4px">REPS</div><input type="number" id="fd-reps" placeholder="—" style="width:100%;background:var(--bg4);border:1px solid var(--border2);border-radius:8px;color:var(--text);font-family:\'DM Mono\',monospace;font-size:16px;padding:8px;outline:none;text-align:center"></div>'
+    +'<div><div style="font-size:9px;color:var(--text3);font-weight:700;margin-bottom:4px">WEIGHT kg</div><input type="number" step="0.5" id="fd-weight" placeholder="—" style="width:100%;background:var(--bg4);border:1px solid var(--border2);border-radius:8px;color:var(--text);font-family:\'DM Mono\',monospace;font-size:16px;padding:8px;outline:none;text-align:center"></div>'
+    +'</div>'
+    +'<textarea id="fd-note" placeholder="Notes (optional)…" style="width:100%;background:var(--bg4);border:1px solid var(--border2);border-radius:8px;color:var(--text);font-family:\'DM Sans\',sans-serif;font-size:13px;padding:9px 12px;outline:none;resize:none;height:56px;display:block;margin-bottom:8px"></textarea>'
+    +'<button id="fd-log-btn" style="width:100%;background:'+cat.color+';border:none;border-radius:10px;color:#000;font-family:\'Bebas Neue\',sans-serif;font-size:16px;letter-spacing:2px;padding:12px;cursor:pointer">LOG SESSION</button>'
+    +'</div>';
+
+  // History
+  if(!logs.length){
+    html+='<div class="empty-state">No sessions logged yet</div>';
+  } else {
+    html+='<div class="sec-lbl">History</div>'
+      +'<div style="margin:0 12px">';
+    logs.forEach(function(l){
+      var trend='';
+      var allLogs=getLogs("fitness",concept.id);
+      var idx=allLogs.findIndex(function(x){return x.id===l.id;});
+      if(idx>0){
+        var prev=allLogs[idx-1];
+        var cw=parseFloat(l.weight||0),pw=parseFloat(prev.weight||0);
+        if(cw>pw) trend=' <span style="color:var(--green)">▲</span>';
+        else if(cw<pw) trend=' <span style="color:var(--red)">▼</span>';
+      }
+      html+='<div style="background:var(--bg3);border:1px solid var(--border);border-radius:12px;padding:11px 14px;margin-bottom:6px;position:relative">'
+        +'<div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:4px">'
+        +'<span style="font-family:\'DM Mono\',monospace;font-size:11px;color:var(--text3)">'+fmtDate(l.dt)+'</span>'
+        +'<div style="font-family:\'Bebas Neue\',sans-serif;font-size:16px;color:'+cat.color+'">'+(l.sets?l.sets+'×':'')+''+(l.reps?l.reps+' reps':'')+' '+(l.weight?l.weight+'kg':'')+trend+'</div>'
+        +'</div>'
+        +(l.note?'<div style="font-size:12px;color:var(--text3);line-height:1.5">'+esc(l.note)+'</div>':'')
+        +'<button class="fd-del-btn" data-lid="'+l.id+'" style="position:absolute;top:9px;right:10px;background:none;border:none;color:var(--border2);font-size:15px;cursor:pointer">×</button>'
+        +'</div>';
+    });
+    html+='</div>';
+  }
+
+  document.getElementById("spec-content").innerHTML=html;
+
+  sI("spec-back-btn").addEventListener("click",function(){specDrillId=null;renderSpecifics();});
+  sI("fd-log-btn").addEventListener("click",function(){
+    var sets=sI("fd-sets").value.trim();
+    var reps=sI("fd-reps").value.trim();
+    var weight=sI("fd-weight").value.trim();
+    var note=sI("fd-note").value.trim();
+    if(!sets&&!reps&&!weight&&!note){toast("Enter at least one field");return;}
+    var arr=getLogs("fitness",concept.id);
+    arr.push({id:Date.now(),dt:today(),sets:sets,reps:reps,weight:weight,note:note});
+    saveLogs("fitness",concept.id,arr);
+    sI("fd-sets").value="";sI("fd-reps").value="";sI("fd-weight").value="";sI("fd-note").value="";
+    renderConceptDetail();toast("Logged ✓");
+  });
+  document.querySelectorAll(".fd-del-btn").forEach(function(btn){
     btn.addEventListener("click",function(){
-      var arr=G("spec_"+activeSpecCat)||[];
-      var id=Number(btn.dataset.id);
-      S("spec_"+activeSpecCat,arr.filter(function(e){return e.id!==id;}));
-      renderSpecifics();toast("Removed");
+      var arr=getLogs("fitness",concept.id).filter(function(l){return l.id!==Number(btn.dataset.lid);});
+      saveLogs("fitness",concept.id,arr);
+      renderConceptDetail();toast("Removed");
     });
   });
 }
 
-function addSpecEntry(){
-  var ta=document.getElementById("spec-note-input");
-  var sel=document.getElementById("spec-type-sel");
-  var note=ta?ta.value.trim():"";
-  if(!note){toast("Enter a note first");return;}
-  var arr=G("spec_"+activeSpecCat)||[];
-  arr.push({id:Date.now(),dt:today(),type:sel?sel.value:"Note",note:note});
-  S("spec_"+activeSpecCat,arr);
-  ta.value="";
-  renderSpecifics();
-  toast("Logged ✓");
+// ============ LEARNING CONCEPTS ============
+function renderLearningConcepts(){
+  var cat=SPEC_CATS[1];
+  var concepts=getConcepts("learning");
+  if(!specSubTab) specSubTab="all";
+
+  var subTypes=["All","Book","Concept","Argument","Reading","Other"];
+  var html='<div style="display:flex;gap:5px;padding:8px 12px 6px;overflow-x:auto;scrollbar-width:none">';
+  subTypes.forEach(function(t){
+    var key=t.toLowerCase();
+    var on=(specSubTab==="all"&&t==="All")||(specSubTab===key&&t!=="All");
+    html+='<button class="spec-sub-btn" data-sub="'+(t==="All"?"all":key)+'" style="flex-shrink:0;padding:5px 12px;border-radius:16px;border:1px solid '+(on?cat.color:"var(--border)")+';background:'+(on?"var(--bg4)":"var(--bg3)")+';color:'+(on?cat.color:"var(--text3)")+';font-size:10px;font-weight:700;cursor:pointer">'+t+'</button>';
+  });
+  html+='</div>';
+
+  // New concept form
+  html+='<div style="margin:0 12px 10px;background:var(--bg3);border:1px solid var(--border);border-radius:12px;padding:12px 14px">'
+    +'<div style="font-size:10px;font-weight:700;letter-spacing:2px;color:var(--text3);text-transform:uppercase;margin-bottom:8px">NEW PROFILE</div>'
+    +'<div style="display:flex;gap:8px;margin-bottom:6px">'
+    +mkInput("Title / Name…","ln-new-name")
+    +'</div>'
+    +'<div style="display:flex;gap:8px">'
+    +'<select id="ln-new-type" style="flex:1;background:var(--bg4);border:1px solid var(--border2);border-radius:10px;color:var(--text2);font-size:13px;padding:9px 12px;outline:none"><option value="book">Book</option><option value="concept">Concept</option><option value="argument">Argument</option><option value="reading">Reading</option><option value="other">Other</option></select>'
+    +mkPrimaryBtn("CREATE","ln-add-btn",cat.color)
+    +'</div></div>';
+
+  // Concept list
+  var shown=specSubTab==="all"?concepts:concepts.filter(function(c){return c.type===specSubTab;});
+  if(!shown.length){
+    html+='<div class="empty-state">No profiles yet</div>';
+  } else {
+    html+='<div style="margin:0 12px">';
+    shown.forEach(function(c){
+      var logs=getLogs("learning",c.id);
+      var pct=c.totalPages?Math.min(Math.round((c.pagesRead||0)/c.totalPages*100),100):0;
+      var statusDot=c.completed?'<span style="color:var(--green);font-size:10px">✓ Done</span>':(c.pagesRead?'<span style="color:var(--orange);font-size:10px">In Progress</span>':'<span style="color:var(--text3);font-size:10px">Not Started</span>');
+      html+='<div class="spec-concept-row" data-cid="'+c.id+'" style="background:var(--bg3);border:1px solid var(--border);border-radius:12px;padding:13px 14px;margin-bottom:6px;cursor:pointer">'
+        +'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">'
+        +'<div><div style="font-size:15px;font-weight:600;color:var(--text)">'+esc(c.name)+'</div>'
+        +'<div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin-top:2px">'+c.type+(c.author?' · '+esc(c.author):'')+'</div></div>'
+        +'<div style="text-align:right">'+statusDot+'<div style="font-size:10px;color:var(--text3);font-family:\'DM Mono\',monospace;margin-top:3px">'+logs.length+' entries</div></div>'
+        +'</div>'
+        +(c.totalPages?progressBar(pct,cat.color)+'<div style="font-size:10px;color:var(--text3);margin-top:3px">'+( c.pagesRead||0)+' / '+c.totalPages+' pages · '+pct+'%</div>':'')
+        +'</div>';
+    });
+    html+='</div>';
+  }
+
+  document.getElementById("spec-content").innerHTML=html;
+
+  document.querySelectorAll(".spec-sub-btn").forEach(function(btn){
+    btn.addEventListener("click",function(){specSubTab=btn.dataset.sub;renderLearningConcepts();});
+  });
+  var addBtn=sI("ln-add-btn");
+  if(addBtn) addBtn.addEventListener("click",function(){
+    var name=sI("ln-new-name").value.trim();
+    var type=sI("ln-new-type").value;
+    if(!name){toast("Enter a title");return;}
+    var arr=getConcepts("learning");
+    arr.push({id:Date.now(),name:name,type:type,created:today(),pagesRead:0,totalPages:0,completed:false,author:"",certaintyStart:null,certaintyEnd:null,useful:null,teachable:null});
+    saveConcepts("learning",arr);
+    sI("ln-new-name").value="";
+    renderLearningConcepts();toast("Profile created ✓");
+  });
+  document.querySelectorAll(".spec-concept-row").forEach(function(row){
+    row.addEventListener("click",function(){specDrillId=row.dataset.cid;renderSpecifics();});
+  });
+}
+
+function renderLearningDetail(cat){
+  var concepts=getConcepts("learning");
+  var concept=concepts.find(function(c){return String(c.id)===String(specDrillId);});
+  if(!concept){specDrillId=null;renderSpecifics();return;}
+  var logs=getLogs("learning",concept.id).slice().reverse();
+  var pct=concept.totalPages?Math.min(Math.round((concept.pagesRead||0)/concept.totalPages*100),100):0;
+
+  var html=backBtn("Learning");
+
+  // Header card
+  html+='<div style="margin:4px 12px 8px;background:var(--bg3);border:1px solid '+cat.color+';border-radius:14px;padding:14px 16px">'
+    +'<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:6px">'
+    +'<div><div style="font-family:\'Bebas Neue\',sans-serif;font-size:20px;color:'+cat.color+';letter-spacing:1px">'+esc(concept.name)+'</div>'
+    +'<div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:1px">'+concept.type+(concept.author?' · '+esc(concept.author):'')+'</div>'
+    +'</div>'
+    +(concept.completed?'<span style="background:#0d2010;border:1px solid #2a5a2a;color:var(--green);font-size:10px;font-weight:700;padding:4px 10px;border-radius:20px">COMPLETE</span>':'')
+    +'</div>'
+    +(concept.totalPages?progressBar(pct,cat.color)+'<div style="font-size:10px;color:var(--text3);margin-top:4px">'+(concept.pagesRead||0)+' / '+concept.totalPages+' pages</div>':'')
+    +'</div>';
+
+  // Edit fields
+  html+='<div style="margin:0 12px 8px;background:var(--bg3);border:1px solid var(--border);border-radius:12px;padding:12px 14px">'
+    +'<div style="font-size:10px;font-weight:700;letter-spacing:2px;color:var(--text3);text-transform:uppercase;margin-bottom:10px">DETAILS</div>'
+    +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:8px">'
+    +'<div><div style="font-size:9px;color:var(--text3);font-weight:700;margin-bottom:4px">AUTHOR / SOURCE</div><input type="text" id="ld-author" value="'+esc(concept.author||"")+'" placeholder="Author…" style="width:100%;background:var(--bg4);border:1px solid var(--border2);border-radius:8px;color:var(--text);font-size:13px;padding:8px 10px;outline:none"></div>'
+    +'<div><div style="font-size:9px;color:var(--text3);font-weight:700;margin-bottom:4px">TOTAL PAGES</div><input type="number" id="ld-total" value="'+(concept.totalPages||"")+'" placeholder="0" style="width:100%;background:var(--bg4);border:1px solid var(--border2);border-radius:8px;color:var(--text);font-family:\'DM Mono\',monospace;font-size:16px;padding:8px;outline:none;text-align:center"></div>'
+    +'</div>'
+    +'<div style="margin-bottom:8px"><div style="font-size:9px;color:var(--text3);font-weight:700;margin-bottom:4px">PAGES READ</div>'
+    +'<div style="display:flex;gap:8px;align-items:center"><input type="number" id="ld-pages" value="'+(concept.pagesRead||0)+'" style="width:80px;background:var(--bg4);border:1px solid var(--border2);border-radius:8px;color:var(--text);font-family:\'DM Mono\',monospace;font-size:18px;padding:8px;outline:none;text-align:center">'
+    +'<button id="ld-add50" style="padding:7px 14px;background:var(--bg4);border:1px solid var(--border2);border-radius:8px;color:var(--text3);font-size:12px;font-weight:700;cursor:pointer">+50</button>'
+    +'<button id="ld-finish" style="padding:7px 14px;background:'+(concept.completed?"var(--bg4)":cat.color)+';border:1px solid '+(concept.completed?"var(--border2)":"transparent")+';border-radius:8px;color:'+(concept.completed?"var(--text3)":"#000")+';font-size:12px;font-weight:700;cursor:pointer">'+(concept.completed?"Reopen":"✓ Done")+'</button>'
+    +'</div></div>'
+    +'<button id="ld-save-details" style="width:100%;background:'+cat.color+';border:none;border-radius:10px;color:#000;font-family:\'Bebas Neue\',sans-serif;font-size:15px;letter-spacing:1px;padding:11px;cursor:pointer">SAVE DETAILS</button>'
+    +'</div>';
+
+  // Ratings
+  html+='<div style="margin:0 12px 8px;background:var(--bg3);border:1px solid var(--border);border-radius:12px;padding:12px 14px">'
+    +'<div style="font-size:10px;font-weight:700;letter-spacing:2px;color:var(--text3);text-transform:uppercase;margin-bottom:12px">ASSESSMENTS</div>'
+    +'<div style="margin-bottom:10px"><div style="font-size:11px;color:var(--text2);font-weight:600;margin-bottom:5px">Certainty Now</div>'
+    +ratingBtns("certaintyStart",concept,["Low","Moderate","High","Expert"],["var(--red)","var(--orange)","var(--blue)","var(--green)"])+'</div>'
+    +'<div style="margin-bottom:10px"><div style="font-size:11px;color:var(--text2);font-weight:600;margin-bottom:5px">Certainty at Completion</div>'
+    +ratingBtns("certaintyEnd",concept,["Low","Moderate","High","Expert"],["var(--red)","var(--orange)","var(--blue)","var(--green)"])+'</div>'
+    +'<div style="margin-bottom:10px"><div style="font-size:11px;color:var(--text2);font-weight:600;margin-bottom:5px">Found It Useful?</div>'
+    +ratingBtns("useful",concept,["Not Yet","Somewhat","Very","Essential"],["var(--text3)","var(--orange)","var(--blue)","var(--gold)"])+'</div>'
+    +'<div><div style="font-size:11px;color:var(--text2);font-weight:600;margin-bottom:5px">Would Teach This?</div>'
+    +ratingBtns("teachable",concept,["No","Maybe","Yes, basics","Yes, deeply"],["var(--red)","var(--orange)","var(--blue)","var(--green)"])+'</div>'
+    +'</div>';
+
+  // Log note
+  html+='<div style="margin:0 12px 8px;background:var(--bg3);border:1px solid var(--border);border-radius:12px;padding:12px 14px">'
+    +'<div style="font-size:10px;font-weight:700;letter-spacing:2px;color:var(--text3);text-transform:uppercase;margin-bottom:8px">ADD ENTRY</div>'
+    +'<textarea id="ld-note" placeholder="Insight, quote, reflection…" style="width:100%;background:var(--bg4);border:1px solid var(--border2);border-radius:8px;color:var(--text);font-family:\'DM Sans\',sans-serif;font-size:13px;padding:10px 12px;outline:none;resize:none;height:70px;display:block;margin-bottom:8px"></textarea>'
+    +'<select id="ld-note-type" style="width:100%;background:var(--bg4);border:1px solid var(--border2);border-radius:8px;color:var(--text2);font-size:13px;padding:9px 12px;outline:none;margin-bottom:8px"><option>Insight</option><option>Quote</option><option>Question</option><option>Summary</option><option>Critique</option><option>Application</option></select>'
+    +'<button id="ld-log-btn" style="width:100%;background:'+cat.color+';border:none;border-radius:10px;color:#000;font-family:\'Bebas Neue\',sans-serif;font-size:15px;letter-spacing:1px;padding:11px;cursor:pointer">LOG ENTRY</button>'
+    +'</div>';
+
+  // Log history
+  if(logs.length){
+    html+='<div class="sec-lbl">Entries</div><div style="margin:0 12px">';
+    logs.forEach(function(l){
+      html+='<div style="background:var(--bg3);border:1px solid var(--border);border-radius:12px;padding:11px 14px;margin-bottom:6px;position:relative">'
+        +'<div style="display:flex;justify-content:space-between;margin-bottom:4px">'
+        +'<span style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:'+cat.color+'">'+esc(l.type||"Note")+'</span>'
+        +'<span style="font-size:10px;color:var(--text3);font-family:\'DM Mono\',monospace">'+fmtDate(l.dt)+'</span>'
+        +'</div>'
+        +'<div style="font-size:13px;color:var(--text2);line-height:1.6;white-space:pre-wrap">'+esc(l.note)+'</div>'
+        +'<button class="ld-del-btn" data-lid="'+l.id+'" style="position:absolute;top:9px;right:10px;background:none;border:none;color:var(--border2);font-size:15px;cursor:pointer">×</button>'
+        +'</div>';
+    });
+    html+='</div>';
+  }
+
+  document.getElementById("spec-content").innerHTML=html;
+
+  sI("spec-back-btn").addEventListener("click",function(){specDrillId=null;renderSpecifics();});
+
+  // Rating buttons
+  document.querySelectorAll(".spec-rating-btn").forEach(function(btn){
+    btn.addEventListener("click",function(){
+      var concepts2=getConcepts("learning");
+      var idx=concepts2.findIndex(function(c){return String(c.id)===String(specDrillId);});
+      if(idx<0)return;
+      concepts2[idx][btn.dataset.key]=btn.dataset.val;
+      saveConcepts("learning",concepts2);
+      renderLearningDetail(cat);
+    });
+  });
+
+  sI("ld-add50").addEventListener("click",function(){
+    var inp=sI("ld-pages");
+    inp.value=Math.max(0,(parseInt(inp.value)||0)+50);
+  });
+
+  sI("ld-finish").addEventListener("click",function(){
+    var concepts2=getConcepts("learning");
+    var idx=concepts2.findIndex(function(c){return String(c.id)===String(specDrillId);});
+    if(idx<0)return;
+    concepts2[idx].completed=!concepts2[idx].completed;
+    saveConcepts("learning",concepts2);
+    renderLearningDetail(cat);toast(concepts2[idx].completed?"Marked complete!":"Reopened");
+  });
+
+  sI("ld-save-details").addEventListener("click",function(){
+    var concepts2=getConcepts("learning");
+    var idx=concepts2.findIndex(function(c){return String(c.id)===String(specDrillId);});
+    if(idx<0)return;
+    concepts2[idx].author=sI("ld-author").value.trim();
+    concepts2[idx].totalPages=parseInt(sI("ld-total").value)||0;
+    concepts2[idx].pagesRead=parseInt(sI("ld-pages").value)||0;
+    saveConcepts("learning",concepts2);
+    renderLearningDetail(cat);toast("Saved ✓");
+  });
+
+  sI("ld-log-btn").addEventListener("click",function(){
+    var note=sI("ld-note").value.trim();
+    if(!note){toast("Enter a note");return;}
+    var arr=getLogs("learning",concept.id);
+    arr.push({id:Date.now(),dt:today(),type:sI("ld-note-type").value,note:note});
+    saveLogs("learning",concept.id,arr);
+    sI("ld-note").value="";
+    renderLearningDetail(cat);toast("Logged ✓");
+  });
+
+  document.querySelectorAll(".ld-del-btn").forEach(function(btn){
+    btn.addEventListener("click",function(){
+      var arr=getLogs("learning",concept.id).filter(function(l){return l.id!==Number(btn.dataset.lid);});
+      saveLogs("learning",concept.id,arr);
+      renderLearningDetail(cat);toast("Removed");
+    });
+  });
+}
+
+// ============ FINANCES CONCEPTS (simple log) ============
+function renderFinancesConcepts(){
+  var cat=SPEC_CATS[2];
+  var logs=(G("spec_finances")||[]).slice().reverse();
+
+  var html='<div style="margin:10px 12px 8px;background:var(--bg3);border:1px solid var(--border);border-radius:12px;padding:12px 14px">'
+    +'<div style="font-size:10px;font-weight:700;letter-spacing:2px;color:var(--text3);text-transform:uppercase;margin-bottom:8px">LOG ENTRY</div>'
+    +'<textarea id="fin-note" placeholder="Lead update, follow-up, revenue note…" style="width:100%;background:var(--bg4);border:1px solid var(--border2);border-radius:8px;color:var(--text);font-family:\'DM Sans\',sans-serif;font-size:13px;padding:10px 12px;outline:none;resize:none;height:70px;display:block;margin-bottom:8px"></textarea>'
+    +'<div style="display:flex;gap:8px">'
+    +'<select id="fin-type" style="flex:1;background:var(--bg4);border:1px solid var(--border2);border-radius:8px;color:var(--text2);font-size:13px;padding:9px 12px;outline:none"><option>Lead Update</option><option>Follow-up</option><option>Revenue Note</option><option>Expense</option><option>Goal</option><option>Other</option></select>'
+    +'<button id="fin-log-btn" style="background:'+cat.color+';border:none;border-radius:10px;color:#000;font-family:\'Bebas Neue\',sans-serif;font-size:15px;letter-spacing:1px;padding:0 18px;height:42px;cursor:pointer">LOG</button>'
+    +'</div></div>';
+
+  if(!logs.length){
+    html+='<div class="empty-state">No entries yet</div>';
+  } else {
+    html+='<div class="sec-lbl">Log</div><div style="margin:0 12px">';
+    logs.forEach(function(l){
+      html+='<div style="background:var(--bg3);border:1px solid var(--border);border-radius:12px;padding:11px 14px;margin-bottom:6px;position:relative">'
+        +'<div style="display:flex;justify-content:space-between;margin-bottom:4px">'
+        +'<span style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:'+cat.color+'">'+esc(l.type||"Note")+'</span>'
+        +'<span style="font-size:10px;color:var(--text3);font-family:\'DM Mono\',monospace">'+fmtDate(l.dt)+'</span>'
+        +'</div>'
+        +'<div style="font-size:13px;color:var(--text2);line-height:1.6;white-space:pre-wrap">'+esc(l.note)+'</div>'
+        +'<button class="fin-del-btn" data-id="'+l.id+'" style="position:absolute;top:9px;right:10px;background:none;border:none;color:var(--border2);font-size:15px;cursor:pointer">×</button>'
+        +'</div>';
+    });
+    html+='</div>';
+  }
+
+  document.getElementById("spec-content").innerHTML=html;
+
+  sI("fin-log-btn").addEventListener("click",function(){
+    var note=sI("fin-note").value.trim();
+    if(!note){toast("Enter a note");return;}
+    var arr=G("spec_finances")||[];
+    arr.push({id:Date.now(),dt:today(),type:sI("fin-type").value,note:note});
+    S("spec_finances",arr);
+    sI("fin-note").value="";
+    renderFinancesConcepts();toast("Logged ✓");
+  });
+  document.querySelectorAll(".fin-del-btn").forEach(function(btn){
+    btn.addEventListener("click",function(){
+      var id=Number(btn.dataset.id);
+      var arr=(G("spec_finances")||[]).filter(function(l){return l.id!==id;});
+      S("spec_finances",arr);renderFinancesConcepts();toast("Removed");
+    });
+  });
+}
+
+// ============ GROWTH CONCEPTS ============
+function renderGrowthConcepts(){
+  var cat=SPEC_CATS[3];
+  var concepts=getConcepts("growth");
+
+  var html='<div style="margin:8px 12px 10px;background:var(--bg3);border:1px solid var(--border);border-radius:12px;padding:12px 14px">'
+    +'<div style="font-size:10px;font-weight:700;letter-spacing:2px;color:var(--text3);text-transform:uppercase;margin-bottom:8px">NEW TRAIT / CONCEPT</div>'
+    +'<div style="display:flex;gap:8px;margin-bottom:6px">'
+    +mkInput("e.g. Ambition, Patience, Discipline…","gr-new-name")
+    +'</div>'
+    +'<div style="display:flex;gap:8px">'
+    +'<select id="gr-new-type" style="flex:1;background:var(--bg4);border:1px solid var(--border2);border-radius:8px;color:var(--text2);font-size:13px;padding:9px 12px;outline:none"><option value="trait">Trait</option><option value="habit">Habit</option><option value="mindset">Mindset</option><option value="skill">Skill</option><option value="value">Value</option></select>'
+    +mkPrimaryBtn("CREATE","gr-add-btn",cat.color)
+    +'</div></div>';
+
+  if(!concepts.length){
+    html+='<div class="empty-state">No growth concepts yet</div>';
+  } else {
+    html+='<div style="margin:0 12px">';
+    concepts.forEach(function(c){
+      var logs=getLogs("growth",c.id);
+      var cur=c.currentLevel||0;
+      html+='<div class="spec-concept-row" data-cid="'+c.id+'" style="background:var(--bg3);border:1px solid var(--border);border-radius:12px;padding:13px 14px;margin-bottom:6px;cursor:pointer">'
+        +'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">'
+        +'<div><div style="font-size:15px;font-weight:600;color:var(--text)">'+esc(c.name)+'</div>'
+        +'<div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin-top:2px">'+c.type+'</div></div>'
+        +'<div style="text-align:right"><div style="font-family:\'Bebas Neue\',sans-serif;font-size:22px;color:'+cat.color+'">'+cur+'<span style="font-size:12px">/10</span></div>'
+        +'<div style="font-size:10px;color:var(--text3)">'+logs.length+' entries</div></div>'
+        +'</div>'
+        +progressBar(cur*10,cat.color)
+        +'</div>';
+    });
+    html+='</div>';
+  }
+
+  document.getElementById("spec-content").innerHTML=html;
+
+  var addBtn=sI("gr-add-btn");
+  if(addBtn) addBtn.addEventListener("click",function(){
+    var name=sI("gr-new-name").value.trim();
+    var type=sI("gr-new-type").value;
+    if(!name){toast("Enter a name");return;}
+    var arr=getConcepts("growth");
+    arr.push({id:Date.now(),name:name,type:type,created:today(),currentLevel:0,peakLevel:0});
+    saveConcepts("growth",arr);
+    sI("gr-new-name").value="";
+    renderGrowthConcepts();toast("Created ✓");
+  });
+  document.querySelectorAll(".spec-concept-row").forEach(function(row){
+    row.addEventListener("click",function(){specDrillId=row.dataset.cid;renderSpecifics();});
+  });
+}
+
+function renderGrowthDetail(cat){
+  var concepts=getConcepts("growth");
+  var concept=concepts.find(function(c){return String(c.id)===String(specDrillId);});
+  if(!concept){specDrillId=null;renderSpecifics();return;}
+  var logs=getLogs("growth",concept.id).slice().reverse();
+  var cur=concept.currentLevel||0;
+  var peak=concept.peakLevel||cur;
+
+  var html=backBtn("Growth");
+
+  // Header
+  html+='<div style="margin:4px 12px 8px;background:var(--bg3);border:1px solid '+cat.color+';border-radius:14px;padding:14px 16px">'
+    +'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">'
+    +'<div><div style="font-family:\'Bebas Neue\',sans-serif;font-size:22px;color:'+cat.color+';letter-spacing:1px">'+esc(concept.name)+'</div>'
+    +'<div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:1px">'+concept.type+'</div></div>'
+    +'<div style="text-align:right">'
+    +'<div style="font-family:\'Bebas Neue\',sans-serif;font-size:32px;color:'+cat.color+'">'+cur+'<span style="font-size:14px">/10</span></div>'
+    +'<div style="font-size:10px;color:var(--text3)">Peak: '+peak+'/10</div>'
+    +'</div></div>'
+    +progressBar(cur*10,cat.color)
+    +'</div>';
+
+  // Level slider
+  html+='<div style="margin:0 12px 8px;background:var(--bg3);border:1px solid var(--border);border-radius:12px;padding:12px 14px">'
+    +'<div style="font-size:10px;font-weight:700;letter-spacing:2px;color:var(--text3);text-transform:uppercase;margin-bottom:10px">SET CURRENT LEVEL</div>'
+    +'<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">';
+  for(var lvl=0;lvl<=10;lvl++){
+    var isOn=lvl===cur;
+    html+='<button class="gr-level-btn" data-lvl="'+lvl+'" style="width:36px;height:36px;border-radius:8px;border:1px solid '+(isOn?cat.color:"var(--border2)")+';background:'+(isOn?cat.color:"var(--bg4)")+';color:'+(isOn?"#000":"var(--text3)")+';font-size:13px;font-weight:700;cursor:pointer">'+lvl+'</button>';
+  }
+  html+='</div>'
+    +'<textarea id="gr-note" placeholder="Reflection, evidence, milestone…" style="width:100%;background:var(--bg4);border:1px solid var(--border2);border-radius:8px;color:var(--text);font-family:\'DM Sans\',sans-serif;font-size:13px;padding:10px 12px;outline:none;resize:none;height:66px;display:block;margin-bottom:8px"></textarea>'
+    +'<select id="gr-entry-type" style="width:100%;background:var(--bg4);border:1px solid var(--border2);border-radius:8px;color:var(--text2);font-size:13px;padding:9px 12px;outline:none;margin-bottom:8px"><option>Reflection</option><option>Evidence</option><option>Milestone</option><option>Setback</option><option>Goal</option><option>Gratitude</option></select>'
+    +'<button id="gr-log-btn" style="width:100%;background:'+cat.color+';border:none;border-radius:10px;color:#000;font-family:\'Bebas Neue\',sans-serif;font-size:15px;letter-spacing:1px;padding:11px;cursor:pointer">LOG ENTRY</button>'
+    +'</div>';
+
+  // History
+  if(logs.length){
+    html+='<div class="sec-lbl">Journal</div><div style="margin:0 12px">';
+    logs.forEach(function(l){
+      var trend='';
+      if(l.levelBefore!==undefined&&l.levelAfter!==undefined){
+        if(l.levelAfter>l.levelBefore) trend='<span style="color:var(--green)"> ▲ '+l.levelAfter+'</span>';
+        else if(l.levelAfter<l.levelBefore) trend='<span style="color:var(--red)"> ▼ '+l.levelAfter+'</span>';
+        else trend='<span style="color:var(--text3)"> → '+l.levelAfter+'</span>';
+      }
+      html+='<div style="background:var(--bg3);border:1px solid var(--border);border-radius:12px;padding:11px 14px;margin-bottom:6px;position:relative">'
+        +'<div style="display:flex;justify-content:space-between;margin-bottom:4px">'
+        +'<span style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:'+cat.color+'">'+esc(l.type||"Reflection")+trend+'</span>'
+        +'<span style="font-size:10px;color:var(--text3);font-family:\'DM Mono\',monospace">'+fmtDate(l.dt)+'</span>'
+        +'</div>'
+        +'<div style="font-size:13px;color:var(--text2);line-height:1.6;white-space:pre-wrap">'+esc(l.note)+'</div>'
+        +'<button class="gr-del-btn" data-lid="'+l.id+'" style="position:absolute;top:9px;right:10px;background:none;border:none;color:var(--border2);font-size:15px;cursor:pointer">×</button>'
+        +'</div>';
+    });
+    html+='</div>';
+  }
+
+  document.getElementById("spec-content").innerHTML=html;
+
+  sI("spec-back-btn").addEventListener("click",function(){specDrillId=null;renderSpecifics();});
+
+  var selectedLevel=cur;
+  document.querySelectorAll(".gr-level-btn").forEach(function(btn){
+    btn.addEventListener("click",function(){
+      selectedLevel=parseInt(btn.dataset.lvl);
+      document.querySelectorAll(".gr-level-btn").forEach(function(b){
+        var on=parseInt(b.dataset.lvl)===selectedLevel;
+        b.style.borderColor=on?cat.color:"var(--border2)";
+        b.style.background=on?cat.color:"var(--bg4)";
+        b.style.color=on?"#000":"var(--text3)";
+      });
+    });
+  });
+
+  sI("gr-log-btn").addEventListener("click",function(){
+    var note=sI("gr-note").value.trim();
+    var type=sI("gr-entry-type").value;
+    if(!note&&selectedLevel===cur){toast("Write a reflection or change the level");return;}
+    var prevLevel=cur;
+    var concepts2=getConcepts("growth");
+    var idx=concepts2.findIndex(function(c){return String(c.id)===String(specDrillId);});
+    if(idx>=0){
+      concepts2[idx].currentLevel=selectedLevel;
+      if(selectedLevel>(concepts2[idx].peakLevel||0)) concepts2[idx].peakLevel=selectedLevel;
+      saveConcepts("growth",concepts2);
+    }
+    if(note||selectedLevel!==prevLevel){
+      var arr=getLogs("growth",concept.id);
+      arr.push({id:Date.now(),dt:today(),type:type,note:note||("Level set to "+selectedLevel),levelBefore:prevLevel,levelAfter:selectedLevel});
+      saveLogs("growth",concept.id,arr);
+    }
+    sI("gr-note").value="";
+    renderGrowthDetail(cat);toast("Logged ✓");
+  });
+
+  document.querySelectorAll(".gr-del-btn").forEach(function(btn){
+    btn.addEventListener("click",function(){
+      var arr=getLogs("growth",concept.id).filter(function(l){return l.id!==Number(btn.dataset.lid);});
+      saveLogs("growth",concept.id,arr);
+      renderGrowthDetail(cat);toast("Removed");
+    });
+  });
 }
 
 // ===================== BOOT =====================
