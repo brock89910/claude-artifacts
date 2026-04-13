@@ -2343,7 +2343,7 @@ var EX_SHEETS=[
     sub:"Calories & macros",
     build:function(){
       var rows=[];
-      try{for(var i=0;i<localStorage.length;i++){var k=localStorage.key(i);if(k&&k.indexOf("cal_")===0){var dt=k.slice(4);if(/^\d{4}-\d{2}-\d{2}$/.test(dt)){(G(k)||[]).forEach(function(e){rows.push({date:dt,day:exDOW(dt),meal:e.meal||"",food:e.name||"",cal:e.cal||0,p:e.p||0,c:e.c||0,f:e.f||0});});}}}catch(e2){}
+      try{for(var i=0;i<localStorage.length;i++){var k=localStorage.key(i);if(k&&k.indexOf("cal_")===0){var dt=k.slice(4);if(/^\d{4}-\d{2}-\d{2}$/.test(dt)){(G(k)||[]).forEach(function(e){rows.push({date:dt,day:exDOW(dt),meal:e.meal||"",food:e.name||"",cal:e.cal||0,p:e.p||0,c:e.c||0,f:e.f||0});});}}}}catch(e2){}
       rows.sort(function(a,b){return a.date>b.date?-1:1;});
       return tsvTable(["Date","Day","Meal","Food","Calories","Protein(g)","Carbs(g)","Fat(g)"],rows,["date","day","meal","food","cal","p","c","f"]);
     }
