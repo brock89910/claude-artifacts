@@ -425,6 +425,24 @@ body { font-family: 'DM Sans', sans-serif; color: var(--text); display: flex; fl
   <div id="hdr-right">
     <span id="date-badge"></span>
     <span id="streak-badge">🔥 0</span>
+    <button id="export-btn" title="Export data" style="background:none;border:none;padding:4px 6px;cursor:pointer;color:var(--text3);font-size:15px;line-height:1;border-radius:8px;transition:color 0.2s" onmouseenter="this.style.color='var(--gold)'" onmouseleave="this.style.color='var(--text3)'">⬆</button>
+  </div>
+</div>
+
+<!-- EXPORT DRAWER -->
+<div id="export-overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.75);z-index:200;backdrop-filter:blur(6px);align-items:flex-end">
+  <div id="export-sheet" style="background:var(--bg2);border-top:1px solid var(--border2);border-radius:20px 20px 0 0;width:100%;max-height:88vh;display:flex;flex-direction:column;animation:slideUp 0.25s ease">
+    <div style="flex-shrink:0;padding:14px 20px 10px;border-bottom:1px solid var(--border)">
+      <div style="width:36px;height:4px;background:var(--border2);border-radius:2px;margin:0 auto 14px"></div>
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <div>
+          <div style="font-family:'Bebas Neue',sans-serif;font-size:18px;color:var(--text);letter-spacing:1px">EXPORT TO SHEETS</div>
+          <div style="font-size:10px;color:var(--text3);font-family:'DM Mono',monospace;margin-top:2px">Copy any table → paste into Google Sheets</div>
+        </div>
+        <button id="export-all-btn" style="background:var(--gold);border:none;border-radius:10px;color:#000;font-family:'Bebas Neue',sans-serif;font-size:13px;letter-spacing:1px;padding:8px 16px;cursor:pointer">COPY ALL</button>
+      </div>
+    </div>
+    <div id="export-content" style="flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:12px 16px 30px"></div>
   </div>
 </div>
 
@@ -2229,6 +2247,263 @@ function renderGrowthDetail(cat){
     });
   });
 }
+
+// ===================== EXPORT =====================
+(function(){
+
+var CATS_EX=[
+  {id:"body",name:"Body",items:["88kg >","Take Creatine","Cardio","Am I getting stronger & leaner","Ways to improve Hockey","Warm up the body","Don't let go","Carbs is 3rd thought"]},
+  {id:"mental",name:"Mental",items:["Perservering","Humble","Achieving","Responsible","Am I…","Striving","Gentle","Improving"]},
+  {id:"character",name:"Character",items:["Set Clear Goals","Don't let external stress affect me","Calm Mind Burning Heart","Recite Clear Goals","No Whelm","Enjoy the Great Challenge","Dedication to Winning","Be Considerate to most"]},
+  {id:"life",name:"Life / Future",items:["Personal Finances","Relation","Am I doing well for them","Consider other routes","Am I on track Financially and Career wise","Will me in 1 year thank current me?","On my phone less","Looking for more"]},
+  {id:"education",name:"Education",items:["Find topic","Apply to real life & theory","Read 5 min","Conclusion","Reflect 5 min","Decide my stance","Critique the previous","Antagonize"]},
+  {id:"karma",name:"Karma / Luck",items:["Check yourself","ACT first","Say YES more","Always Greet","Pick up trashed luck","Keep area clean","Be Unfair to me","Planning"]},
+  {id:"work",name:"Work",items:["Are emails up to date","Payments Due?","Assignments Due?","Are my responsibilities up to date?","Is Scheduling done?","Are my people happy?","What does customer want","How do we improve customer satisfaction"]},
+  {id:"env",name:"Environments",items:["Am I doing well for others too","Consistent Sleep","Up to date on Checklists","Take care of my stuff","Show respect to most","Stay Tough through thin","Be someone I can be aspired","Reflect"]}
+];
+
+var CL_ITEMS=[
+  {time:"8:00 AM",id:"m_wake",label:"Wake up at 8 AM"},
+  {time:"8:00 AM",id:"m_weigh",label:"Weigh myself"},
+  {time:"8:00 AM",id:"m_eat",label:"Eat at home"},
+  {time:"9:00 AM",id:"o_email",label:"Check & sort emails"},
+  {time:"9:00 AM",id:"o_resv",label:"Review reservations"},
+  {time:"9:00 AM",id:"o_inv",label:"Check inventory"},
+  {time:"9:00 AM",id:"o_tasks",label:"Review tasks for today"},
+  {time:"9:00 AM",id:"o_news",label:"Watch finance news"},
+  {time:"9:00 AM",id:"o_fit10",label:"Fitness done by 10 AM"},
+  {time:"2:00 PM",id:"p_outside",label:"Done with outside work"},
+  {time:"4:00 PM",id:"p_read",label:"Finished reading (50+ pages)"},
+  {time:"4:00 PM",id:"p_bills",label:"Bills & available tasks cleared"},
+  {time:"4:00 PM",id:"p_tips",label:"Tips & payroll done"},
+  {time:"4:00 PM",id:"p_dev",label:"Extra development done"},
+  {time:"6:00 PM",id:"e_sched",label:"Scheduling completed"},
+  {time:"10:00 PM",id:"n_reflect",label:"Reflected on the day"},
+  {time:"10:00 PM",id:"n_tomorrow",label:"Projection set for tomorrow"}
+];
+
+function getDatesForPrefix(prefix){
+  var dates=[];
+  try{for(var i=0;i<localStorage.length;i++){var k=localStorage.key(i);if(k&&k.indexOf(prefix)===0){var d=k.slice(prefix.length);if(/^\d{4}-\d{2}-\d{2}$/.test(d))dates.push(d);}}}catch(e){}
+  return dates.sort();
+}
+
+function exDOW(s){try{return ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"][new Date(s+"T12:00:00").getDay()];}catch(e){return "";}}
+function exEsc(s){return String(s===undefined||s===null?"":s).replace(/\t/g," ").replace(/\n/g," ").replace(/\r/g,"");}
+function tsvRow(arr){return arr.map(exEsc).join("\t");}
+function tsvTable(headers,rows,keys){
+  var lines=[headers.join("\t")];
+  rows.forEach(function(r){lines.push(keys.map(function(k){return exEsc(r[k]!==undefined?r[k]:"");}).join("\t"));});
+  return lines.join("\n");
+}
+
+var EX_SHEETS=[
+  {
+    id:"mandala",label:"Mandala",color:"var(--gold)",
+    sub:"9×9×9 daily items",
+    build:function(){
+      var rows=[];
+      getDatesForPrefix("m_").forEach(function(dt){
+        var H=G("m_"+dt)||{};
+        CATS_EX.forEach(function(cat){
+          cat.items.forEach(function(item,i){
+            var st=H[cat.id+"_"+i]||"";
+            if(st)rows.push({date:dt,day:exDOW(dt),category:cat.name,item:item,status:st});
+          });
+        });
+      });
+      return tsvTable(["Date","Day","Category","Item","Status"],rows,["date","day","category","item","status"]);
+    }
+  },
+  {
+    id:"checklist",label:"Checklist",color:"var(--blue)",
+    sub:"Hourly blocks & projections",
+    build:function(){
+      var rows=[];
+      getDatesForPrefix("cl_").forEach(function(dt){
+        var C=G("cl_"+dt)||{};
+        var proj=(G("proj_"+dt)||{}).text||"";
+        CL_ITEMS.forEach(function(it){
+          if(C[it.id]!==undefined)rows.push({date:dt,day:exDOW(dt),time:it.time,item:it.label,done:C[it.id]?"Yes":"No",projection:proj});
+        });
+      });
+      return tsvTable(["Date","Day","Time Block","Item","Done","Projection"],rows,["date","day","time","item","done","projection"]);
+    }
+  },
+  {
+    id:"weight",label:"Weight Log",color:"var(--teal)",
+    sub:"AM / PM weight",
+    build:function(){
+      var rows=(G("fitness")||[]).slice().sort(function(a,b){return a.dt>b.dt?-1:1;});
+      return tsvTable(["Date","Day","AM (kg)","PM (kg)","Diff"],rows.map(function(e){return {date:e.dt,day:exDOW(e.dt),am:e.am||"",pm:e.pm||"",diff:(e.am&&e.pm?(parseFloat(e.pm)-parseFloat(e.am)).toFixed(1):"")};}),["date","day","am","pm","diff"]);
+    }
+  },
+  {
+    id:"food",label:"Food Log",color:"var(--orange)",
+    sub:"Calories & macros",
+    build:function(){
+      var rows=[];
+      try{for(var i=0;i<localStorage.length;i++){var k=localStorage.key(i);if(k&&k.indexOf("cal_")===0){var dt=k.slice(4);if(/^\d{4}-\d{2}-\d{2}$/.test(dt)){(G(k)||[]).forEach(function(e){rows.push({date:dt,day:exDOW(dt),meal:e.meal||"",food:e.name||"",cal:e.cal||0,p:e.p||0,c:e.c||0,f:e.f||0});});}}}catch(e2){}
+      rows.sort(function(a,b){return a.date>b.date?-1:1;});
+      return tsvTable(["Date","Day","Meal","Food","Calories","Protein(g)","Carbs(g)","Fat(g)"],rows,["date","day","meal","food","cal","p","c","f"]);
+    }
+  },
+  {
+    id:"checkins",label:"Check-ins",color:"var(--purple)",
+    sub:"3-day fitness & learning Q&A",
+    build:function(){
+      var FQ=["On track with weight goal?","Getting stronger?","Energy levels staying high?"];
+      var LQ=["Read ¼ of current book?","Retaining what you read?","Learning translating to real life?"];
+      var rows=[];
+      getDatesForPrefix("checkin_").forEach(function(dt){
+        var stored=G("checkin_"+dt)||{};
+        var epoch=new Date("2024-01-01T00:00:00"),d=new Date(dt+"T12:00:00");
+        var days=Math.floor((d-epoch)/(1000*60*60*24));
+        var type=(Math.floor(days/3)%2===0)?"Fitness":"Learning";
+        var qs=type==="Fitness"?FQ:LQ;
+        qs.forEach(function(q,qi){rows.push({date:dt,day:exDOW(dt),type:type,question:q,answer:stored[qi]||""});});
+      });
+      return tsvTable(["Date","Day","Type","Question","Answer"],rows,["date","day","type","question","answer"]);
+    }
+  },
+  {
+    id:"workouts",label:"Workouts",color:"var(--blue)",
+    sub:"Sets / reps / weight per movement",
+    build:function(){
+      var rows=[];
+      (G("concepts_fitness")||[]).forEach(function(c){
+        (G("clog_fitness_"+c.id)||[]).forEach(function(l){
+          rows.push({concept:c.name,date:l.dt||"",day:exDOW(l.dt||""),sets:l.sets||"",reps:l.reps||"",weight:l.weight||"",note:l.note||""});
+        });
+      });
+      rows.sort(function(a,b){return a.date>b.date?-1:1;});
+      return tsvTable(["Workout","Date","Day","Sets","Reps","Weight(kg)","Notes"],rows,["concept","date","day","sets","reps","weight","note"]);
+    }
+  },
+  {
+    id:"learning",label:"Learning Profiles",color:"var(--purple)",
+    sub:"Books, concepts & ratings",
+    build:function(){
+      var rows=(G("concepts_learning")||[]).map(function(c){return {name:c.name,type:c.type||"",author:c.author||"",total:c.totalPages||0,read:c.pagesRead||0,pct:c.totalPages?Math.round((c.pagesRead||0)/c.totalPages*100)+"%":"",done:c.completed?"Yes":"No",cnow:c.certaintyStart||"",cend:c.certaintyEnd||"",useful:c.useful||"",teach:c.teachable||"",created:c.created||""};});
+      return tsvTable(["Title","Type","Author","Total Pages","Read","% Done","Completed","Certainty Now","Certainty at End","Useful?","Teach?","Created"],rows,["name","type","author","total","read","pct","done","cnow","cend","useful","teach","created"]);
+    }
+  },
+  {
+    id:"learning_log",label:"Learning Log",color:"var(--purple)",
+    sub:"Notes, insights & quotes",
+    build:function(){
+      var rows=[];
+      (G("concepts_learning")||[]).forEach(function(c){
+        (G("clog_learning_"+c.id)||[]).forEach(function(l){
+          rows.push({concept:c.name,date:l.dt||"",day:exDOW(l.dt||""),type:l.type||"",note:l.note||""});
+        });
+      });
+      rows.sort(function(a,b){return a.date>b.date?-1:1;});
+      return tsvTable(["Title","Date","Day","Entry Type","Note"],rows,["concept","date","day","type","note"]);
+    }
+  },
+  {
+    id:"growth",label:"Growth Traits",color:"var(--teal)",
+    sub:"Current & peak levels",
+    build:function(){
+      var rows=(G("concepts_growth")||[]).map(function(c){return {name:c.name,type:c.type||"",cur:c.currentLevel||0,peak:c.peakLevel||0,created:c.created||""};});
+      return tsvTable(["Concept","Type","Current Level","Peak Level","Created"],rows,["name","type","cur","peak","created"]);
+    }
+  },
+  {
+    id:"growth_log",label:"Growth Journal",color:"var(--teal)",
+    sub:"Reflections & level changes",
+    build:function(){
+      var rows=[];
+      (G("concepts_growth")||[]).forEach(function(c){
+        (G("clog_growth_"+c.id)||[]).forEach(function(l){
+          rows.push({concept:c.name,date:l.dt||"",day:exDOW(l.dt||""),type:l.type||"",before:l.levelBefore!==undefined?l.levelBefore:"",after:l.levelAfter!==undefined?l.levelAfter:"",note:l.note||""});
+        });
+      });
+      rows.sort(function(a,b){return a.date>b.date?-1:1;});
+      return tsvTable(["Concept","Date","Day","Type","Level Before","Level After","Reflection"],rows,["concept","date","day","type","before","after","note"]);
+    }
+  },
+  {
+    id:"finances",label:"Finances",color:"var(--gold)",
+    sub:"Leads, follow-ups & notes",
+    build:function(){
+      var rows=(G("spec_finances")||[]).map(function(l){return {date:l.dt||"",day:exDOW(l.dt||""),type:l.type||"",note:l.note||""};}).sort(function(a,b){return a.date>b.date?-1:1;});
+      return tsvTable(["Date","Day","Type","Note"],rows,["date","day","type","note"]);
+    }
+  }
+];
+
+function copyTsv(text,btn){
+  if(navigator.clipboard){
+    navigator.clipboard.writeText(text).then(function(){onCopied(btn);}).catch(function(){fallbackCopy(text,btn);});
+  } else {fallbackCopy(text,btn);}
+}
+function fallbackCopy(text,btn){
+  var ta=document.createElement("textarea");
+  ta.value=text;ta.style.cssText="position:fixed;opacity:0;top:0;left:0";
+  document.body.appendChild(ta);ta.select();
+  try{document.execCommand("copy");onCopied(btn);}catch(e){}
+  document.body.removeChild(ta);
+}
+function onCopied(btn){
+  toast("Copied — paste into Google Sheets ✓");
+  if(btn){var orig=btn.textContent;btn.textContent="✓ COPIED";btn.style.color="var(--green)";btn.style.borderColor="var(--green)";setTimeout(function(){btn.textContent=orig;btn.style.color="";btn.style.borderColor="";},2000);}
+}
+
+function openExport(){
+  var overlay=document.getElementById("export-overlay");
+  overlay.style.display="flex";
+  var html="";
+  EX_SHEETS.forEach(function(s){
+    var tsv=s.build();
+    var rowCount=tsv.split("\n").length-1;
+    html+='<div style="margin-bottom:14px">'
+      +'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">'
+      +'<div><div style="font-family:\'Bebas Neue\',sans-serif;font-size:14px;letter-spacing:1.5px;color:'+s.color+'">'+s.label+'</div>'
+      +'<div style="font-size:10px;color:var(--text3);font-family:\'DM Mono\',monospace">'+s.sub+' · '+rowCount+' row'+(rowCount!==1?"s":"")+'</div></div>'
+      +'<button class="ex-copy-btn" data-sid="'+s.id+'" style="padding:5px 13px;background:var(--bg3);border:1px solid var(--border2);border-radius:8px;color:var(--text3);font-size:10px;font-weight:700;cursor:pointer;letter-spacing:0.5px;text-transform:uppercase;white-space:nowrap">COPY</button>'
+      +'</div>'
+      +'<div style="background:var(--bg3);border:1px solid var(--border);border-radius:8px;overflow:hidden">'
+      +'<div style="overflow-x:auto;max-height:120px"><table style="width:100%;border-collapse:collapse;font-size:11px;min-width:400px">'
+      +(function(){
+        var lines=tsv.split("\n");
+        var hdr=lines[0]?'<tr>'+lines[0].split("\t").map(function(h){return '<th style="background:var(--bg4);color:var(--text3);font-weight:700;letter-spacing:1px;text-transform:uppercase;padding:6px 10px;text-align:left;font-size:9px;border-bottom:1px solid var(--border2);white-space:nowrap">'+h+'</th>';}).join("")+'</tr>':"";
+        var body=lines.slice(1,4).map(function(row){return '<tr>'+row.split("\t").map(function(cell){return '<td style="padding:5px 10px;border-bottom:1px solid var(--border);color:var(--text2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:160px">'+cell+'</td>';}).join("")+'</tr>';}).join("");
+        var more=lines.length>4?'<tr><td colspan="20" style="padding:5px 10px;color:var(--text3);font-size:10px;font-family:\'DM Mono\',monospace">… '+(lines.length-4)+' more rows</td></tr>':"";
+        return '<thead>'+hdr+'</thead><tbody>'+body+more+'</tbody>';
+      })()
+      +'</table></div></div></div>';
+  });
+  document.getElementById("export-content").innerHTML=html;
+
+  document.querySelectorAll(".ex-copy-btn").forEach(function(btn){
+    btn.addEventListener("click",function(e){
+      e.stopPropagation();
+      var s=EX_SHEETS.find(function(x){return x.id===btn.dataset.sid;});
+      if(s)copyTsv(s.build(),btn);
+    });
+  });
+}
+
+document.getElementById("export-btn").addEventListener("click",openExport);
+
+document.getElementById("export-overlay").addEventListener("click",function(e){
+  if(e.target===this)this.style.display="none";
+});
+
+document.getElementById("export-all-btn").addEventListener("click",function(e){
+  e.stopPropagation();
+  var parts=[];
+  EX_SHEETS.forEach(function(s){
+    parts.push("=== "+s.label.toUpperCase()+" ===");
+    parts.push(s.build());
+    parts.push("");
+  });
+  copyTsv(parts.join("\n"),document.getElementById("export-all-btn"));
+});
+
+})();
 
 // ===================== BOOT =====================
 updateHeader();
