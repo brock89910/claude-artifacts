@@ -587,6 +587,47 @@ body { font-family: 'DM Sans', sans-serif; color: var(--text); display: flex; fl
 
     <div class="sec-lbl">History</div>
     <div id="fit-history"></div>
+
+    <!-- WEIGHT COMPARE TOOL -->
+    <div class="sec-lbl">Compare & Analyse</div>
+    <div id="wt-compare-wrap" style="margin:0 12px 12px">
+      <div style="background:var(--bg3);border:1px solid var(--border);border-radius:14px;padding:14px">
+        <div style="font-size:10px;font-weight:700;letter-spacing:2px;color:var(--text3);text-transform:uppercase;margin-bottom:12px">Target Weight Lookup</div>
+        <div style="display:flex;gap:8px;align-items:center;margin-bottom:10px">
+          <input type="number" step="0.1" id="compare-input" placeholder="e.g. 90.0"
+            style="flex:1;background:var(--bg4);border:1px solid var(--border2);border-radius:8px;color:var(--text);font-family:'DM Mono',monospace;font-size:16px;padding:9px 12px;outline:none;text-align:center">
+          <span style="font-size:11px;color:var(--text3);font-family:'DM Mono',monospace">kg</span>
+          <button id="compare-btn" style="background:var(--gold);border:none;border-radius:8px;color:#000;font-family:'Bebas Neue',sans-serif;font-size:14px;letter-spacing:1px;padding:9px 18px;cursor:pointer;flex-shrink:0">LOOK UP</button>
+        </div>
+        <div id="compare-result"></div>
+      </div>
+    </div>
+
+    <!-- MASS MIGRATE SECTION -->
+    <div class="sec-lbl">Import Past Data</div>
+    <div style="margin:0 12px 24px">
+      <div style="background:var(--bg3);border:1px solid var(--border);border-radius:14px;padding:14px">
+        <div style="font-size:10px;font-weight:700;letter-spacing:2px;color:var(--text3);text-transform:uppercase;margin-bottom:6px">Paste Spreadsheet Data</div>
+        <div style="font-size:11px;color:var(--text3);margin-bottom:12px;line-height:1.5">Paste your raw weight string below. Every 8th value is a weekly average and will be skipped — only daily readings are imported. Set the date of the <em style="color:var(--text2)">last</em> entry so dates work backwards automatically.</div>
+        <textarea id="migrate-paste" placeholder="e.g. 99.1100.199.298.997.6…" style="width:100%;background:var(--bg4);border:1px solid var(--border2);border-radius:8px;color:var(--text);font-family:'DM Mono',monospace;font-size:13px;padding:10px;outline:none;resize:vertical;min-height:72px;line-height:1.5"></textarea>
+        <div style="display:flex;gap:8px;align-items:center;margin-top:10px;flex-wrap:wrap">
+          <div style="display:flex;align-items:center;gap:6px;flex:1;min-width:160px">
+            <span style="font-size:10px;color:var(--text3);white-space:nowrap;font-weight:600;letter-spacing:1px;text-transform:uppercase">Last entry date</span>
+            <input type="date" id="migrate-end-date" style="background:var(--bg4);border:1px solid var(--border2);border-radius:8px;color:var(--text);font-family:'DM Mono',monospace;font-size:13px;padding:7px 10px;outline:none;flex:1">
+          </div>
+          <div style="display:flex;align-items:center;gap:6px">
+            <span style="font-size:10px;color:var(--text3);white-space:nowrap;font-weight:600;letter-spacing:1px;text-transform:uppercase">As</span>
+            <select id="migrate-field" style="background:var(--bg4);border:1px solid var(--border2);border-radius:8px;color:var(--text2);font-size:12px;padding:7px 10px;outline:none;cursor:pointer">
+              <option value="am">AM weight</option>
+              <option value="pm">PM weight</option>
+            </select>
+          </div>
+          <button id="migrate-preview-btn" style="background:var(--bg4);border:1px solid var(--border2);border-radius:8px;color:var(--text2);font-family:'Bebas Neue',sans-serif;font-size:14px;letter-spacing:1px;padding:9px 16px;cursor:pointer;flex-shrink:0">PREVIEW</button>
+          <button id="migrate-import-btn" style="background:var(--gold);border:none;border-radius:8px;color:#000;font-family:'Bebas Neue',sans-serif;font-size:14px;letter-spacing:1px;padding:9px 16px;cursor:pointer;flex-shrink:0;display:none">IMPORT</button>
+        </div>
+        <div id="migrate-preview" style="margin-top:12px"></div>
+      </div>
+    </div>
   </div>
 
   <!-- SPECIFICS -->
@@ -1248,6 +1289,10 @@ function renderFitness(){
   document.getElementById("wt-am").value=entry.am||"";
   document.getElementById("wt-pm").value=entry.pm||"";
 
+  // Set default migrate end date to today
+  var mEndDate=document.getElementById("migrate-end-date");
+  if(mEndDate&&!mEndDate.value)mEndDate.value=today();
+
   // Restore calorie target
   var target=G("cal_target")||"";
   document.getElementById("cal-target").value=target||"";
@@ -1404,20 +1449,254 @@ function buildCharts(){
 }
 
 function renderFitHistory(){
-  var log=(G("fitness")||[]).slice().sort(function(a,b){return a.dt<b.dt?1:-1;}).slice(0,20);
-  if(!log.length){document.getElementById("fit-history").innerHTML='<div class="empty-state">No entries yet</div>';return;}
+  var log=(G("fitness")||[]).slice().sort(function(a,b){return a.dt<b.dt?1:-1;});
+  var el=document.getElementById("fit-history");
+  if(!log.length){el.innerHTML='<div class="empty-state">No entries yet</div>';return;}
+
+  // Show/hide controls
+  var showing=parseInt(el.dataset.showing||"30");
+  var total=log.length;
+  var shown=log.slice(0,showing);
+
   var html='<div style="margin:0 12px;background:var(--bg3);border:1px solid var(--border);border-radius:12px;overflow:hidden">';
-  log.forEach(function(e){
+  shown.forEach(function(e,i){
+    var prev=log[i+1];
     var diff=(e.am&&e.pm)?((parseFloat(e.pm)-parseFloat(e.am)).toFixed(1)):"";
-    html+='<div class="history-row">'
+    var trendStr="";
+    if(prev){
+      var cur=e.am||e.pm, prv=prev.am||prev.pm;
+      if(cur&&prv){
+        var td=(parseFloat(cur)-parseFloat(prv)).toFixed(1);
+        var tdNum=parseFloat(td);
+        var tdColor=tdNum<0?"var(--green)":tdNum>0?"var(--red)":"var(--text3)";
+        var tdArrow=tdNum>0?"▲"+td:tdNum<0?"▼"+Math.abs(td):"=";
+        trendStr='<span style="font-size:10px;color:'+tdColor+';margin-left:6px">'+tdArrow+'</span>';
+      }
+    }
+    html+='<div class="history-row" style="cursor:default">'
       +'<span class="history-date">'+fmtShort(e.dt)+'</span>'
       +'<span class="history-vals">AM:'+(e.am||"—")+'  PM:'+(e.pm||"—")
       +(diff?' <span style="color:'+(parseFloat(diff)>0?"var(--red)":"var(--green)")+'">'+( parseFloat(diff)>0?"+":"")+diff+'kg</span>':'')
-      +'</span></div>';
+      +'</span>'
+      +'<button onclick="deleteWeightEntry(\''+e.dt+'\')" style="background:none;border:none;color:var(--border2);font-size:16px;cursor:pointer;padding:0 4px;flex-shrink:0" title="Delete">×</button>'
+      +'</div>';
+  });
+  if(total>showing){
+    html+='<div style="padding:10px;text-align:center"><button id="fit-history-more" style="background:none;border:1px solid var(--border2);color:var(--text3);border-radius:8px;padding:6px 18px;font-size:11px;font-weight:700;cursor:pointer;letter-spacing:1px">SHOW MORE ('+( total-showing)+' remaining)</button></div>';
+  }
+  html+='</div>';
+  el.innerHTML=html;
+
+  var moreBtn=document.getElementById("fit-history-more");
+  if(moreBtn){
+    moreBtn.addEventListener("click",function(){
+      el.dataset.showing=String(showing+50);
+      renderFitHistory();
+    });
+  }
+}
+
+function deleteWeightEntry(dt){
+  var log=(G("fitness")||[]).filter(function(e){return e.dt!==dt;});
+  S("fitness",log);
+  renderFitness();
+  toast("Entry removed");
+}
+
+// ===================== WEIGHT COMPARE =====================
+document.getElementById("compare-input").addEventListener("keydown",function(e){if(e.key==="Enter")document.getElementById("compare-btn").click();});
+document.getElementById("compare-btn").addEventListener("click",function(){
+  var target=parseFloat(document.getElementById("compare-input").value);
+  if(!target||target<20||target>300){toast("Enter a valid weight");return;}
+  var log=(G("fitness")||[]).slice().sort(function(a,b){return a.dt<b.dt?1:-1;});
+  if(log.length<2){toast("Not enough data yet");return;}
+
+  var result=document.getElementById("compare-result");
+  var tol=1.0; // ±1kg window for "last at this weight"
+
+  // Find most recent date at that weight (within tolerance)
+  var lastMatch=null;
+  for(var i=0;i<log.length;i++){
+    var w=parseFloat(log[i].am||log[i].pm||0);
+    if(Math.abs(w-target)<=tol){lastMatch=log[i];break;}
+  }
+
+  // Compute weekly rate using linear regression on weekly averages
+  // Group by week (ISO week buckets of 7 days)
+  var sorted=log.slice().sort(function(a,b){return a.dt<b.dt?-1:1;});
+  var weekAvgs=[];
+  for(var j=0;j<sorted.length;j+=7){
+    var chunk=sorted.slice(j,j+7);
+    var vals=chunk.map(function(e){return parseFloat(e.am||e.pm||0);}).filter(function(v){return v>0;});
+    if(vals.length>0){
+      var avg=vals.reduce(function(s,v){return s+v;},0)/vals.length;
+      weekAvgs.push({date:chunk[0].dt,avg:avg});
+    }
+  }
+
+  // Use last 8 weeks if available, otherwise all
+  var rateData=weekAvgs.length>8?weekAvgs.slice(-8):weekAvgs;
+  var rate=null;
+  if(rateData.length>=2){
+    var first=rateData[0], last=rateData[rateData.length-1];
+    var weeksDiff=Math.max(1,(new Date(last.date)-new Date(first.date))/(7*24*3600*1000));
+    rate=(last.avg-first.avg)/weeksDiff; // kg/week (negative = losing)
+  }
+
+  // Current weight
+  var curW=parseFloat(log[0].am||log[0].pm||0);
+  var diff=target-curW;
+
+  var html='';
+
+  // Current vs target
+  var dirLabel=diff<0?"above target":"below target";
+  html+='<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px">'
+    +'<div style="background:var(--bg4);border:1px solid var(--border);border-radius:10px;padding:10px;text-align:center">'
+    +'<div style="font-size:9px;color:var(--text3);font-weight:700;letter-spacing:2px;text-transform:uppercase;margin-bottom:4px">Current</div>'
+    +'<div style="font-family:\'Bebas Neue\',sans-serif;font-size:28px;color:var(--gold);line-height:1">'+curW.toFixed(1)+'</div>'
+    +'<div style="font-size:10px;color:var(--text3)">kg</div>'
+    +'</div>'
+    +'<div style="background:var(--bg4);border:1px solid var(--border);border-radius:10px;padding:10px;text-align:center">'
+    +'<div style="font-size:9px;color:var(--text3);font-weight:700;letter-spacing:2px;text-transform:uppercase;margin-bottom:4px">Gap</div>'
+    +'<div style="font-family:\'Bebas Neue\',sans-serif;font-size:28px;color:'+(diff<0?"var(--red)":"var(--green)")+';line-height:1">'+(diff>0?"+":"")+diff.toFixed(1)+'</div>'
+    +'<div style="font-size:10px;color:var(--text3)">kg '+dirLabel+'</div>'
+    +'</div>'
+    +'</div>';
+
+  // Rate & ETA
+  if(rate!==null){
+    var rateLabel=(rate<0?"losing ":"gaining ")+Math.abs(rate).toFixed(2)+" kg/wk";
+    var etaHtml='';
+    if(Math.abs(diff)>0.3){
+      if((diff<0&&rate<0)||(diff>0&&rate>0)){
+        var weeks=Math.abs(diff/rate);
+        var etaDate=new Date();
+        etaDate.setDate(etaDate.getDate()+Math.round(weeks*7));
+        var etaStr=etaDate.toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"});
+        etaHtml='<div style="margin-top:4px;font-size:11px;color:var(--text2)">ETA at current rate: <strong style="color:var(--gold)">'+etaStr+'</strong> (~'+Math.round(weeks)+' wks)</div>';
+      } else {
+        etaHtml='<div style="margin-top:4px;font-size:11px;color:var(--red)">Current trend moves away from target</div>';
+      }
+    } else {
+      etaHtml='<div style="margin-top:4px;font-size:11px;color:var(--green)">You\'re at or near this weight now</div>';
+    }
+    html+='<div style="background:var(--bg4);border:1px solid var(--border);border-radius:10px;padding:10px 12px;margin-bottom:10px">'
+      +'<div style="font-size:9px;color:var(--text3);font-weight:700;letter-spacing:2px;text-transform:uppercase;margin-bottom:6px">Recent Rate (last '+(rateData.length)+' wks avg)</div>'
+      +'<div style="font-size:16px;font-family:\'DM Mono\',monospace;color:'+(rate<0?"var(--green)":"var(--red)")+'">'+rateLabel+'</div>'
+      +etaHtml
+      +'</div>';
+  }
+
+  // Last time at this weight
+  if(lastMatch){
+    var daysAgo=Math.round((new Date()-new Date(lastMatch.dt+"T12:00:00"))/(1000*60*60*24));
+    var agoLabel=daysAgo===0?"today":daysAgo===1?"yesterday":daysAgo+" days ago";
+    var matchW=parseFloat(lastMatch.am||lastMatch.pm||0);
+    html+='<div style="background:var(--bg4);border:1px solid var(--border);border-radius:10px;padding:10px 12px">'
+      +'<div style="font-size:9px;color:var(--text3);font-weight:700;letter-spacing:2px;text-transform:uppercase;margin-bottom:6px">Last at this weight (±1kg)</div>'
+      +'<div style="display:flex;justify-content:space-between;align-items:center">'
+      +'<div><div style="font-size:15px;font-family:\'DM Mono\',monospace;color:var(--text)">'+fmtDate(lastMatch.dt)+'</div>'
+      +'<div style="font-size:11px;color:var(--text3)">'+agoLabel+' · logged '+matchW.toFixed(1)+'kg</div></div>'
+      +'<div style="font-family:\'Bebas Neue\',sans-serif;font-size:26px;color:var(--blue)">'+daysAgo+'<span style="font-size:12px;color:var(--text3)"> days</span></div>'
+      +'</div></div>';
+  } else {
+    html+='<div style="background:var(--bg4);border:1px solid var(--border);border-radius:10px;padding:10px 12px;color:var(--text3);font-size:12px">No entry found within ±1kg of '+target.toFixed(1)+'kg in your history</div>';
+  }
+
+  result.innerHTML=html;
+});
+
+// ===================== MASS MIGRATE =====================
+var migrateData=[];
+
+function parseMigrateString(raw){
+  // Extract all decimal numbers from a packed string like 99.1100.199.2…
+  var nums=[];
+  var s=raw.trim();
+  // Use regex to pull out all valid weight-like numbers (50–250kg range, up to 1 decimal)
+  var matches=s.match(/\d{2,3}(?:\.\d{1,2})?/g);
+  if(!matches)return [];
+  matches.forEach(function(m){
+    var v=parseFloat(m);
+    if(v>=30&&v<=250)nums.push(v);
+  });
+  return nums;
+}
+
+document.getElementById("migrate-preview-btn").addEventListener("click",function(){
+  var raw=document.getElementById("migrate-paste").value;
+  var endDate=document.getElementById("migrate-end-date").value;
+  var field=document.getElementById("migrate-field").value;
+  if(!raw.trim()){toast("Paste your data first");return;}
+  if(!endDate){toast("Set the last entry date");return;}
+
+  var nums=parseMigrateString(raw);
+  if(!nums.length){toast("Could not parse any numbers");return;}
+
+  // Every 8th value (index 7, 15, 23, …) is a weekly average — skip them
+  var dailyNums=[];
+  nums.forEach(function(v,i){
+    if((i+1)%8!==0)dailyNums.push(v);
+  });
+
+  // Build dates backwards from endDate
+  var entries=[];
+  var baseDate=new Date(endDate+"T12:00:00");
+  for(var i=dailyNums.length-1;i>=0;i--){
+    var d=new Date(baseDate);
+    d.setDate(d.getDate()-(dailyNums.length-1-i));
+    var dtStr=d.toISOString().split("T")[0];
+    entries.push({dt:dtStr,val:dailyNums[i]});
+  }
+
+  migrateData=entries;
+
+  // Preview table
+  var pre=document.getElementById("migrate-preview");
+  var importBtn=document.getElementById("migrate-import-btn");
+  importBtn.style.display="block";
+
+  var skipped=nums.length-dailyNums.length;
+  var html='<div style="font-size:11px;color:var(--text3);margin-bottom:8px">Found <strong style="color:var(--text)">'+nums.length+'</strong> values · <strong style="color:var(--text)">'+dailyNums.length+'</strong> daily entries · <strong style="color:var(--orange)">'+skipped+'</strong> weekly averages skipped</div>';
+  html+='<div style="background:var(--bg4);border:1px solid var(--border);border-radius:8px;overflow:hidden;max-height:200px;overflow-y:auto">';
+  entries.forEach(function(e,i){
+    var isFirst=i===0,isLast=i===entries.length-1;
+    html+='<div style="display:flex;justify-content:space-between;padding:6px 10px;border-bottom:1px solid var(--border);font-size:11px;font-family:\'DM Mono\',monospace;'+(isFirst||isLast?"background:var(--bg3)":"")+'"><span style="color:var(--text2)">'+fmtDate(e.dt)+'</span><span style="color:var(--gold)">'+e.val.toFixed(1)+' kg ('+(field==="am"?"AM":"PM")+')</span></div>';
   });
   html+='</div>';
-  document.getElementById("fit-history").innerHTML=html;
-}
+  pre.innerHTML=html;
+});
+
+document.getElementById("migrate-import-btn").addEventListener("click",function(){
+  if(!migrateData.length){toast("Preview first");return;}
+  var field=document.getElementById("migrate-field").value;
+  var log=G("fitness")||[];
+  var existing={};
+  log.forEach(function(e){existing[e.dt]=e;});
+
+  var added=0,updated=0;
+  migrateData.forEach(function(e){
+    if(existing[e.dt]){
+      existing[e.dt][field]=e.val;
+      updated++;
+    } else {
+      var entry={dt:e.dt};
+      entry[field]=e.val;
+      existing[e.dt]=entry;
+      added++;
+    }
+  });
+
+  // Rebuild array
+  var newLog=Object.values(existing).sort(function(a,b){return a.dt<b.dt?-1:1;});
+  S("fitness",newLog);
+  renderFitness();
+  document.getElementById("migrate-preview").innerHTML='<div style="padding:10px;text-align:center;color:var(--green);font-size:13px;font-weight:700">✓ Imported '+added+' new entries, updated '+updated+'</div>';
+  document.getElementById("migrate-import-btn").style.display="none";
+  migrateData=[];
+  toast("Import complete ✓");
+});
 
 document.getElementById("log-btn").addEventListener("click",function(){
   var am=parseFloat(document.getElementById("wt-am").value)||null;
