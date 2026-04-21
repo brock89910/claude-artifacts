@@ -1123,7 +1123,42 @@ async function boot(){
     S.vendors=results[7];S.priceItems=results[8];S.permaRestrictions=results[9]||[];
   }catch(e){showToast('Firebase error');console.error(e);}
 
-  // Seed checklist tasks if none exist
+  // ── Auto-seeding removed ──
+  // Seed data is now only written via window.seedDefaults() — never automatically on boot.
+  // This prevents placeholder data from overwriting real Firebase records when auth fails.
+
+  const now=new Date();
+  document.getElementById('d-date').textContent=now.toLocaleDateString('en-CA',{weekday:'long',year:'numeric',month:'long',day:'numeric'});
+  document.getElementById('sb-date').textContent=now.toLocaleDateString('en-CA',{month:'short',day:'numeric',year:'numeric'});
+  document.getElementById('cl-date').valueAsDate=now;
+  const mon=getMonday(now);
+  // Set date input via ISO string to avoid timezone shifts (valueAsDate uses UTC)
+  const monISO=`${mon.getFullYear()}-${String(mon.getMonth()+1).padStart(2,'0')}-${String(mon.getDate()).padStart(2,'0')}`;
+  document.getElementById('sch-weekdate').value=monISO;
+  setWeekLabel('sch-weekdate','sch-week-label');
+  // Copy last week's schedule into this week BEFORE rendering, so shifts are in S
+  const wk=getWeekKey();
+  if(wk&&wk!=='default'){
+    await Promise.all([
+      copyFromPrevWeekForSections(wk,['SUSHI','KITCHEN','TEPPAN']),
+      copyFromPrevWeekForSections(wk,['SERVING']),
+    ]);
+  }
+  buildCleaning();renderAll();updateResAuthUI();
+  // Also attempt a read immediately (works if rules allow public read, or if session already exists)
+  window.loadReservations();
+  // Price item modal live calc
+  document.getElementById('pi-price').addEventListener('input',updatePiCalc);
+  document.getElementById('pi-weight').addEventListener('input',updatePiCalc);
+  document.getElementById('pi-unit').addEventListener('change',updatePiCalc);
+}
+boot();
+
+// ── Manual seed — only runs when explicitly called, never on boot ──
+window.seedDefaults=async function(){
+  if(!confirm('This will write default placeholder data for any empty collections (clTasks, vendors, priceItems). It will NOT overwrite existing records. Continue?'))return;
+  let seeded=[];
+
   if(!S.clTasks.length){
     const seedTasks=[
       {title:'Beer Keg, Wine Box',desc:'Beer & Wine — Inventory Weekly. Due: Monday',importance:'medium',flag:'action',status:'notstarted'},
@@ -1152,9 +1187,9 @@ async function boot(){
       const rec={...seedTasks[i],order:i};
       rec.id=await fsAdd('clTasks',rec);S.clTasks.push(rec);
     }
+    seeded.push('clTasks');
   }
 
-  // Seed vendors if none exist
   const SEED_VENDORS=[
     {name:'Costco',contact:'',notes:'Membership required. Bulk/wholesale retail.'},
     {name:'Wholesale Club',contact:'',notes:'Bulk foodservice items.'},
@@ -1176,14 +1211,13 @@ async function boot(){
     for(const v of SEED_VENDORS){
       const rec={...v};rec.id=await fsAdd('vendors',rec);S.vendors.push(rec);
     }
+    seeded.push('vendors');
   }
 
-  // Seed price items from known data (scallop pricing from screenshot + common restaurant items)
   if(!S.priceItems.length&&S.vendors.length){
     const vMap={};S.vendors.forEach(v=>{vMap[v.name.toLowerCase().replace(/[^a-z0-9]/g,'')]=v.id;});
     const getV=name=>vMap[name.toLowerCase().replace(/[^a-z0-9]/g,'')]||'';
     const seedItems=[
-      // Scallops — from screenshot
       {itemName:'Scallops (Olivia)',vendorId:getV('Costco'),price:29.99,weight:680,unit:'g',type:'20/40',notes:'Retail baseline — calculated $20/100g'},
       {itemName:'Atlantic Scallops',vendorId:getV('Sysco'),price:414.52,weight:10,unit:'lb',type:'10/20',notes:'Premium large — $41.45/lb calculated'},
       {itemName:'Atlantic Scallops',vendorId:getV('Sysco'),price:368.84,weight:10,unit:'lb',type:'20/30',notes:'Mid-large — $36.88/lb calculated'},
@@ -1196,7 +1230,6 @@ async function boot(){
       {itemName:'Sea Scallops',vendorId:getV('Moncton Fish Market'),price:329.90,weight:10,unit:'lb',type:'10/20',notes:'Best premium — $32.99/lb'},
       {itemName:'Sea Scallops',vendorId:getV('Moncton Fish Market'),price:299.90,weight:10,unit:'lb',type:'20/30',notes:'Mid tier — $29.99/lb'},
       {itemName:'Sea Scallops',vendorId:getV('Moncton Fish Market'),price:285.00,weight:10,unit:'lb',type:'30/40',notes:'Lower size — $28.50/lb'},
-      // Common restaurant items — approximate estimates
       {itemName:'Salmon (Atlantic)',vendorId:getV('Sysco'),price:189.00,weight:10,unit:'lb',type:'Fillet, skin-on',notes:'Approx. market price'},
       {itemName:'Salmon (Atlantic)',vendorId:getV('Moncton Fish Market'),price:16.99,weight:1,unit:'lb',type:'Fresh fillet',notes:'Fresh — market price'},
       {itemName:'Tuna (Yellowfin)',vendorId:getV('Sysco'),price:22.00,weight:1,unit:'lb',type:'Sashimi grade',notes:'Approx.'},
@@ -1228,34 +1261,12 @@ async function boot(){
       if(!item.vendorId)continue;
       const rec={...item};rec.id=await fsAdd('priceItems',rec);S.priceItems.push(rec);
     }
+    seeded.push('priceItems');
   }
 
-  const now=new Date();
-  document.getElementById('d-date').textContent=now.toLocaleDateString('en-CA',{weekday:'long',year:'numeric',month:'long',day:'numeric'});
-  document.getElementById('sb-date').textContent=now.toLocaleDateString('en-CA',{month:'short',day:'numeric',year:'numeric'});
-  document.getElementById('cl-date').valueAsDate=now;
-  const mon=getMonday(now);
-  // Set date input via ISO string to avoid timezone shifts (valueAsDate uses UTC)
-  const monISO=`${mon.getFullYear()}-${String(mon.getMonth()+1).padStart(2,'0')}-${String(mon.getDate()).padStart(2,'0')}`;
-  document.getElementById('sch-weekdate').value=monISO;
-  setWeekLabel('sch-weekdate','sch-week-label');
-  // Copy last week's schedule into this week BEFORE rendering, so shifts are in S
-  const wk=getWeekKey();
-  if(wk&&wk!=='default'){
-    await Promise.all([
-      copyFromPrevWeekForSections(wk,['SUSHI','KITCHEN','TEPPAN']),
-      copyFromPrevWeekForSections(wk,['SERVING']),
-    ]);
-  }
-  buildCleaning();renderAll();updateResAuthUI();
-  // Also attempt a read immediately (works if rules allow public read, or if session already exists)
-  window.loadReservations();
-  // Price item modal live calc
-  document.getElementById('pi-price').addEventListener('input',updatePiCalc);
-  document.getElementById('pi-weight').addEventListener('input',updatePiCalc);
-  document.getElementById('pi-unit').addEventListener('change',updatePiCalc);
-}
-boot();
+  if(seeded.length){renderAll();showToast('Seeded: '+seeded.join(', ')+' ✓');}
+  else{showToast('Nothing to seed — all collections already have data');}
+};
 
 function renderAll(){renderDash();renderBills();renderCleanLog();renderRestrictions();renderReqOffs();renderEmployees();updateEmpDatalist();renderClTasks();renderPricing();renderVendorDropdown();updatePiItemList();renderPermaRestrictions();updatePermaRestrictDatalist();renderScheduleWithCopy();}
 
